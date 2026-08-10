@@ -11,13 +11,13 @@ ExecStart=/usr/local/bin/coord-server --config /etc/coord-server/config.toml
 Restart=on-failure
 RestartSec=5s
 
-# Restrições de segurança
+# Security restrictions
 ProtectSystem=full
 ProtectHome=true
 NoNewPrivileges=true
 PrivateTmp=true
 
-# Variáveis de ambiente (podem ser substituídas via /etc/default/coord-server)
+# Environment variables (can be overridden via /etc/default/coord-server)
 EnvironmentFile=-/etc/default/coord-server
 
 [Install]

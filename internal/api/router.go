@@ -12,11 +12,11 @@ import (
 	"github.com/goy-co/coord-server/internal/vpn"
 )
 
-// NewRouter configura e retorna um novo chi.Router com os middlewares e rotas registadas.
+// NewRouter configures and returns a new chi.Router with registered middlewares and routes.
 func NewRouter(cfg *config.Config, st store.Store, startTime time.Time, vpnProvider vpn.VPNProvider, rateLimiter *custommiddleware.IPRateLimiter) chi.Router {
 	r := chi.NewRouter()
 
-	// 1. Middlewares Globais
+	// 1. Global Middlewares
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Recoverer)
@@ -27,29 +27,29 @@ func NewRouter(cfg *config.Config, st store.Store, startTime time.Time, vpnProvi
 		r.Use(custommiddleware.RateLimitMiddleware(rateLimiter, cfg))
 	}
 
-	// In-memory cache para /relays
+	// In-memory cache for /relays
 	relayCache := NewRelayCache(cfg.Registry.DiscoveryCacheTTLSeconds)
 
-	// 2. Rotas Públicas (Sem Autenticação)
+	// 2. Public Routes (No Authentication)
 	r.Get("/health", HealthHandler(st))
 	r.Get("/info", InfoHandler(cfg, startTime))
 	r.Handle("/metrics", promhttp.Handler())
 
-	// 3. Rotas Protegidas (Exigem Autenticação por API Key se require_auth = true)
+	// 3. Protected Routes (Require API Key authentication if require_auth = true)
 	r.Group(func(r chi.Router) {
 		r.Use(custommiddleware.AuthMiddleware(cfg))
 
-		// Rotas Nodes (/v1/nodes/*)
+		// Nodes Routes (/v1/nodes/*)
 		r.Route("/v1/nodes", func(r chi.Router) {
 			r.Post("/register", RegisterNodeHandler(st, cfg, vpnProvider))
 			r.Get("/{id}", GetNodeHandler(st))
 			r.Delete("/{id}", DeleteNodeHandler(st))
 		})
 
-		// Rota VPN Status (/v1/vpn/status)
+		// VPN Status Route (/v1/vpn/status)
 		r.Get("/v1/vpn/status", GetVPNStatusHandler(vpnProvider))
 
-		// Rotas Relays (/relays/*)
+		// Relays Routes (/relays/*)
 		r.Route("/relays", func(r chi.Router) {
 			r.Get("/", GetRelaysHandler(st, cfg, relayCache))
 			r.Post("/", RegisterRelayHandler(st, cfg, relayCache))

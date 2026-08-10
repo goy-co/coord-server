@@ -2,7 +2,7 @@ package vpn
 
 import "context"
 
-// VPNStatusResponse representa a resposta do endpoint de diagnóstico da VPN (/v1/vpn/status).
+// VPNStatusResponse represents the response for the VPN diagnostic endpoint (/v1/vpn/status).
 type VPNStatusResponse struct {
 	VPNEnabled         bool   `json:"vpn_enabled"`
 	HeadscaleReachable bool   `json:"headscale_reachable"`
@@ -10,17 +10,17 @@ type VPNStatusResponse struct {
 	RegisteredMachines int    `json:"registered_machines"`
 }
 
-// VPNProvider define a interface abstrata para operações VPN / Headscale.
+// VPNProvider defines the abstract interface for VPN / Headscale operations.
 type VPNProvider interface {
-	// CreatePreAuthKey gera uma nova pre-auth key no Headscale para onboarding de um nó.
+	// CreatePreAuthKey generates a new pre-auth key in Headscale for node onboarding.
 	CreatePreAuthKey(ctx context.Context, reusable bool, expiryHours int) (string, error)
 
-	// HealthCheck verifica a conectividade à API Headscale.
+	// HealthCheck checks connectivity to the Headscale API.
 	HealthCheck(ctx context.Context) error
 
-	// GetStatus retorna métricas de diagnóstico do serviço VPN.
+	// GetStatus returns diagnostic metrics of the VPN service.
 	GetStatus(ctx context.Context) (*VPNStatusResponse, error)
 
-	// GetControlURL retorna o URL de controlo VPN exposto aos nós.
+	// GetControlURL returns the VPN control URL exposed to nodes.
 	GetControlURL() string
 }

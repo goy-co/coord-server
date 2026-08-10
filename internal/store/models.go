@@ -2,7 +2,7 @@ package store
 
 import "time"
 
-// Constantes com os estados possíveis de um nó (Node status).
+// Constants defining node status values.
 const (
 	NodeStatusActive    = "active"
 	NodeStatusInactive  = "inactive"
@@ -10,14 +10,14 @@ const (
 	NodeStatusDeleted   = "deleted"
 )
 
-// Constantes com os estados possíveis de um relay (Relay status).
+// Constants defining relay status values.
 const (
 	RelayStatusActive      = "active"
 	RelayStatusInactive    = "inactive"
 	RelayStatusUnreachable = "unreachable"
 )
 
-// Node representa um nó registado na rede Goy mesh network.
+// Node represents a registered node in the Goy mesh network.
 type Node struct {
 	ID                 string     `json:"id"`
 	AuthKeyHash        string     `json:"auth_key_hash"`
@@ -33,7 +33,7 @@ type Node struct {
 	DeletedAt          *time.Time `json:"deleted_at,omitempty"`
 }
 
-// Relay representa um nó que atua como ponto de retransmissão/storage na rede Goy mesh network.
+// Relay represents a node acting as a relay/storage peer in the Goy mesh network.
 type Relay struct {
 	NodeID             string    `json:"node_id"`
 	URL                string    `json:"url"`

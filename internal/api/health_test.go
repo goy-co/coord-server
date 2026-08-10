@@ -38,16 +38,16 @@ func TestHealthEndpoint(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("Esperava status 200, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 200, got: %d", rec.Code)
 		}
 
 		var resp api.HealthResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("Falha ao deserializar resposta JSON: %v", err)
+			t.Fatalf("Failed to deserialize JSON response: %v", err)
 		}
 
 		if resp.Status != "ok" || resp.Version != api.ServerVersion {
-			t.Errorf("Resposta inesperada: %+v", resp)
+			t.Errorf("Unexpected response: %+v", resp)
 		}
 	})
 
@@ -64,16 +64,16 @@ func TestHealthEndpoint(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusServiceUnavailable {
-			t.Fatalf("Esperava status 503, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 503, got: %d", rec.Code)
 		}
 
 		var resp api.HealthResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("Falha ao deserializar resposta JSON: %v", err)
+			t.Fatalf("Failed to deserialize JSON response: %v", err)
 		}
 
 		if resp.Status != "degraded" || resp.Error != "database unreachable" {
-			t.Errorf("Resposta inesperada: %+v", resp)
+			t.Errorf("Unexpected response: %+v", resp)
 		}
 	})
 }
@@ -92,27 +92,27 @@ func TestInfoEndpoint(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Esperava status 200, obtido: %d", rec.Code)
+		t.Fatalf("Expected status 200, got: %d", rec.Code)
 	}
 
 	var resp api.InfoResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("Falha ao deserializar resposta JSON: %v", err)
+		t.Fatalf("Failed to deserialize JSON response: %v", err)
 	}
 
 	if resp.Version != api.ServerVersion {
-		t.Errorf("Versão esperada %s, obtida: %s", api.ServerVersion, resp.Version)
+		t.Errorf("Expected version %s, got: %s", api.ServerVersion, resp.Version)
 	}
 
 	if resp.UptimeSeconds < 10 {
-		t.Errorf("Uptime em segundos esperado >= 10, obtido: %d", resp.UptimeSeconds)
+		t.Errorf("Expected UptimeSeconds >= 10, got: %d", resp.UptimeSeconds)
 	}
 
 	if resp.ListenAddress != cfg.Server.Listen {
-		t.Errorf("ListenAddress esperado %s, obtido: %s", cfg.Server.Listen, resp.ListenAddress)
+		t.Errorf("Expected ListenAddress %s, got: %s", cfg.Server.Listen, resp.ListenAddress)
 	}
 
 	if resp.DatabasePath != cfg.Database.Path {
-		t.Errorf("DatabasePath esperado %s, obtido: %s", cfg.Database.Path, resp.DatabasePath)
+		t.Errorf("Expected DatabasePath %s, got: %s", cfg.Database.Path, resp.DatabasePath)
 	}
 }

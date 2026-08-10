@@ -28,17 +28,17 @@ func writeUnauthorized(w http.ResponseWriter, details string) {
 	})
 }
 
-// AuthMiddleware intercepta os pedidos HTTP e valida o token Bearer enviado no header Authorization.
+// AuthMiddleware intercepts HTTP requests and validates the Bearer token in the Authorization header.
 func AuthMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Se a autenticação estiver desativada globalmente, permitir acesso
+			// If authentication is disabled globally, allow access
 			if !cfg.Auth.RequireAuth {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// Verificar se o caminho faz parte da lista de caminhos públicos isentos de auth
+			// Check if the path is included in the list of public paths exempt from auth
 			path := r.URL.Path
 			for _, pubPath := range cfg.Auth.PublicPaths {
 				if path == pubPath || strings.HasPrefix(path, pubPath+"/") {
@@ -49,37 +49,37 @@ func AuthMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
 
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				slog.Warn("Autenticação falhou: header Authorization em falta",
+				slog.Warn("Authentication failed: missing Authorization header",
 					slog.String("path", path),
 					slog.String("remote_addr", r.RemoteAddr),
 				)
 				metrics.AuthFailuresTotal.Inc()
-				writeUnauthorized(w, "header Authorization em falta")
+				writeUnauthorized(w, "missing Authorization header")
 				return
 			}
 
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-				slog.Warn("Autenticação falhou: formato de header Authorization inválido (esperado 'Bearer <token>')",
+				slog.Warn("Authentication failed: invalid Authorization header format (expected 'Bearer <token>')",
 					slog.String("path", path),
 					slog.String("remote_addr", r.RemoteAddr),
 				)
 				metrics.AuthFailuresTotal.Inc()
-				writeUnauthorized(w, "formato do header Authorization deve ser 'Bearer <token>'")
+				writeUnauthorized(w, "Authorization header format must be 'Bearer <token>'")
 				return
 			}
 
 			token := strings.TrimSpace(parts[1])
 			adminKey := cfg.Auth.AdminAPIKey
 
-			// Comparação em tempo constante para prevenir timing attacks
+			// Constant-time comparison to prevent timing attacks
 			if len(token) == 0 || subtle.ConstantTimeCompare([]byte(token), []byte(adminKey)) != 1 {
-				slog.Warn("Autenticação falhou: API key inválida",
+				slog.Warn("Authentication failed: invalid API key",
 					slog.String("path", path),
 					slog.String("remote_addr", r.RemoteAddr),
 				)
 				metrics.AuthFailuresTotal.Inc()
-				writeUnauthorized(w, "API key inválida")
+				writeUnauthorized(w, "invalid API key")
 				return
 			}
 

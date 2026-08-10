@@ -29,7 +29,7 @@ func writeTooManyRequests(w http.ResponseWriter, retryAfterSeconds int) {
 	w.WriteHeader(http.StatusTooManyRequests)
 	_ = json.NewEncoder(w).Encode(rateLimitErrorResponse{
 		Error:  "rate limit exceeded",
-		Reason: "limite de pedidos HTTP excedido",
+		Reason: "HTTP request limit exceeded",
 	})
 }
 
@@ -38,7 +38,7 @@ type ipBucket struct {
 	lastRefill time.Time
 }
 
-// IPRateLimiter gere os buckets de tokens para limitação de taxa baseada no IP do cliente.
+// IPRateLimiter manages token buckets for client-IP-based rate limiting.
 type IPRateLimiter struct {
 	mu            sync.RWMutex
 	buckets       map[string]*ipBucket
@@ -46,7 +46,7 @@ type IPRateLimiter struct {
 	stopChan      chan struct{}
 }
 
-// NewIPRateLimiter instancia um novo IPRateLimiter e inicia a goroutine de limpeza em background.
+// NewIPRateLimiter instantiates a new IPRateLimiter and starts the background cleanup goroutine.
 func NewIPRateLimiter() *IPRateLimiter {
 	limiter := &IPRateLimiter{
 		buckets:       make(map[string]*ipBucket),
@@ -87,13 +87,13 @@ func (l *IPRateLimiter) cleanupStaleBuckets() {
 	}
 }
 
-// Allow verifica se o IP tem tokens suficientes para efetuar o pedido segundo a taxa e burst.
+// Allow checks if the IP has enough tokens to perform the request according to rate and burst limits.
 func (l *IPRateLimiter) Allow(ip string, rpm int, burst int) (bool, int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	now := time.Now()
-	fillRate := float64(rpm) / 60.0 // tokens por segundo
+	fillRate := float64(rpm) / 60.0 // tokens per second
 
 	b, exists := l.buckets[ip]
 	if !exists {
@@ -104,7 +104,7 @@ func (l *IPRateLimiter) Allow(ip string, rpm int, burst int) (bool, int) {
 		return true, 0
 	}
 
-	// Refill de tokens decorrido desde a última chamada
+	// Refill tokens elapsed since last call
 	elapsed := now.Sub(b.lastRefill).Seconds()
 	b.tokens += elapsed * fillRate
 	if b.tokens > float64(burst) {
@@ -117,7 +117,7 @@ func (l *IPRateLimiter) Allow(ip string, rpm int, burst int) (bool, int) {
 		return true, 0
 	}
 
-	// Calcular tempo necessário para recuperar 1 token inteiro
+	// Calculate time needed to recover 1 full token
 	missing := 1.0 - b.tokens
 	retryAfterSec := int(math.Ceil(missing / fillRate))
 	if retryAfterSec <= 0 {
@@ -127,13 +127,13 @@ func (l *IPRateLimiter) Allow(ip string, rpm int, burst int) (bool, int) {
 	return false, retryAfterSec
 }
 
-// RateLimitMiddleware é o middleware HTTP que impõe os limites de taxa por IP.
+// RateLimitMiddleware is the HTTP middleware that enforces rate limits per IP.
 func RateLimitMiddleware(limiter *IPRateLimiter, cfg *config.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 
-			// Isentar caminhos públicos
+			// Exempt public paths
 			for _, pubPath := range cfg.Auth.PublicPaths {
 				if path == pubPath || strings.HasPrefix(path, pubPath+"/") {
 					next.ServeHTTP(w, r)
@@ -146,14 +146,14 @@ func RateLimitMiddleware(limiter *IPRateLimiter, cfg *config.Config) func(http.H
 			rpm := cfg.RateLimit.RequestsPerMinute
 			burst := cfg.RateLimit.Burst
 
-			// Limite mais generoso para pedidos de heartbeat (/relays/{node_id} PUT)
+			// More generous limit for heartbeat requests (PUT /relays/{node_id})
 			if r.Method == http.MethodPut && strings.HasPrefix(path, "/relays/") {
 				rpm = cfg.RateLimit.HeartbeatRPM
 			}
 
 			allowed, retryAfter := limiter.Allow(clientIP, rpm, burst)
 			if !allowed {
-				slog.Warn("Rate limit excedido para IP do cliente",
+				slog.Warn("Rate limit exceeded for client IP",
 					slog.String("ip", clientIP),
 					slog.String("path", path),
 					slog.Int("retry_after_seconds", retryAfter),
@@ -168,7 +168,7 @@ func RateLimitMiddleware(limiter *IPRateLimiter, cfg *config.Config) func(http.H
 	}
 }
 
-// ExtractClientIP extrai o IP real do cliente (considerando headers X-Forwarded-For).
+// ExtractClientIP extracts the client's real IP address (considering X-Forwarded-For headers).
 func ExtractClientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")

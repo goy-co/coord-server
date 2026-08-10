@@ -20,8 +20,8 @@ import (
 )
 
 func main() {
-	configPathFlag := flag.String("config", "config.toml", "Caminho para o ficheiro de configuração TOML")
-	versionFlag := flag.Bool("version", false, "Exibir versão da aplicação e sair")
+	configPathFlag := flag.String("config", "config.toml", "Path to TOML configuration file")
+	versionFlag := flag.Bool("version", false, "Display application version and exit")
 	flag.Parse()
 
 	if *versionFlag {
@@ -31,59 +31,59 @@ func main() {
 
 	startTime := time.Now()
 
-	// 1. Carregar configuração
+	// 1. Load configuration
 	cfg, err := config.Load(*configPathFlag)
 	if err != nil {
-		slog.Error("Falha ao carregar configuração", slog.String("error", err.Error()))
+		slog.Error("Failed to load configuration", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
 	if !cfg.Auth.RequireAuth {
-		slog.Warn("ATENÇÃO: Autenticação desativada (require_auth = false). Não utilize em produção!")
+		slog.Warn("WARNING: Authentication disabled (require_auth = false). Do not use in production!")
 	}
 
-	// 2. Inicializar Storage SQLite
+	// 2. Initialize SQLite Storage
 	st := store.NewSQLiteStore(cfg.Database.Path)
 	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer initCancel()
 
 	if err := st.Init(initCtx); err != nil {
-		slog.Error("Falha ao inicializar base de dados SQLite", slog.String("path", cfg.Database.Path), slog.String("error", err.Error()))
+		slog.Error("Failed to initialize SQLite database", slog.String("path", cfg.Database.Path), slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	slog.Info("Base de dados SQLite inicializada com sucesso", slog.String("path", cfg.Database.Path))
+	slog.Info("SQLite database initialized successfully", slog.String("path", cfg.Database.Path))
 
-	// 3. Inicializar VPN Provider (Headscale)
+	// 3. Initialize VPN Provider (Headscale)
 	var vpnProvider vpn.VPNProvider
 	if cfg.VPN.Enabled {
 		vpnProvider = vpn.NewHeadscaleClient(cfg.VPN.HeadscaleAPIURL, cfg.VPN.HeadscaleAPIKey, cfg.VPN.HeadscaleUser)
-		slog.Info("Integração Headscale VPN ativada", slog.String("url", cfg.VPN.HeadscaleAPIURL), slog.String("user", cfg.VPN.HeadscaleUser))
+		slog.Info("Headscale VPN integration enabled", slog.String("url", cfg.VPN.HeadscaleAPIURL), slog.String("user", cfg.VPN.HeadscaleUser))
 	} else {
 		vpnProvider = vpn.NewNoopVPNProvider()
-		slog.Info("Integração Headscale VPN desativada (utilizando NoopVPNProvider)")
+		slog.Info("Headscale VPN integration disabled (using NoopVPNProvider)")
 	}
 
-	// 4. Inicializar Rate Limiter
+	// 4. Initialize Rate Limiter
 	rateLimiter := middleware.NewIPRateLimiter()
 	defer rateLimiter.Close()
 
-	// 5. Iniciar Background Jobs Runner
+	// 5. Start Background Jobs Runner
 	jobRunner := jobs.NewRunner(
 		st,
 		cfg.Jobs.CleanupRelaysIntervalSeconds,
 		cfg.Jobs.CleanupNodesIntervalSeconds,
 		cfg.Registry.RelayTTLSeconds,
-		48, // nós inativos há mais de 48h são marcados como inativos
+		48, // mark nodes inactive after 48h of inactivity
 	)
 	jobsCtx, jobsCancel := context.WithCancel(context.Background())
 	defer jobsCancel()
 	go jobRunner.Start(jobsCtx)
 
-	// 6. Criar Router Chi
+	// 6. Create Chi Router
 	router := api.NewRouter(cfg, st, startTime, vpnProvider, rateLimiter)
 
-	// 6. Configurar HTTP Server
+	// 7. Configure HTTP Server
 	srv := &http.Server{
 		Addr:         cfg.Server.Listen,
 		Handler:      router,
@@ -94,7 +94,7 @@ func main() {
 	serverErrors := make(chan error, 1)
 
 	go func() {
-		slog.Info("Servidor coord-server em execução",
+		slog.Info("coord-server running",
 			slog.String("version", api.ServerVersion),
 			slog.String("listen", cfg.Server.Listen),
 			slog.String("db_path", cfg.Database.Path),
@@ -104,34 +104,34 @@ func main() {
 		serverErrors <- srv.ListenAndServe()
 	}()
 
-	// 7. Signal handling para Graceful Shutdown
+	// 8. Signal handling for Graceful Shutdown
 	shutdownSignal := make(chan os.Signal, 1)
 	signal.Notify(shutdownSignal, os.Interrupt, syscall.SIGTERM)
 
 	select {
 	case err := <-serverErrors:
 		if err != nil && err != http.ErrServerClosed {
-			slog.Error("Erro fatal no servidor HTTP", slog.String("error", err.Error()))
+			slog.Error("Fatal error in HTTP server", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
 	case sig := <-shutdownSignal:
-		slog.Info("Sinal de paragem recebido, iniciando graceful shutdown...", slog.String("signal", sig.String()))
+		slog.Info("Shutdown signal received, starting graceful shutdown...", slog.String("signal", sig.String()))
 
-		// Parar background jobs primeiro
+		// Stop background jobs first
 		jobRunner.Stop()
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer shutdownCancel()
 
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("Erro ao encerrar servidor HTTP", slog.String("error", err.Error()))
+			slog.Error("Error shutting down HTTP server", slog.String("error", err.Error()))
 			_ = srv.Close()
 		}
 
 		if err := st.Close(); err != nil {
-			slog.Error("Erro ao fechar base de dados SQLite", slog.String("error", err.Error()))
+			slog.Error("Error closing SQLite database", slog.String("error", err.Error()))
 		}
 
-		slog.Info("Graceful shutdown concluído com sucesso")
+		slog.Info("Graceful shutdown completed successfully")
 	}
 }

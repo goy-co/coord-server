@@ -24,7 +24,7 @@ func TestRelayEndpoints(t *testing.T) {
 	ctx := context.Background()
 
 	if err := st.Init(ctx); err != nil {
-		t.Fatalf("Falha ao inicializar SQLiteStore: %v", err)
+		t.Fatalf("Failed to initialize SQLiteStore: %v", err)
 	}
 	defer st.Close()
 
@@ -33,7 +33,7 @@ func TestRelayEndpoints(t *testing.T) {
 
 	router := api.NewRouter(cfg, st, time.Now(), vpn.NewNoopVPNProvider(), nil)
 
-	// 1. Criar nó para permitir registo de relay
+	// 1. Create parent node to allow relay registration
 	nodeID := "goy-node-relay-test-1"
 	err := st.CreateNode(ctx, &store.Node{
 		ID:          nodeID,
@@ -41,12 +41,12 @@ func TestRelayEndpoints(t *testing.T) {
 		Name:        "relay-parent-node",
 	})
 	if err != nil {
-		t.Fatalf("Erro ao criar nó pai: %v", err)
+		t.Fatalf("Error creating parent node: %v", err)
 	}
 
 	validFingerprint := "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-	// 2. POST /relays com node_id Inexistente -> 404 Not Found
+	// 2. POST /relays with Nonexistent node_id -> 404 Not Found
 	t.Run("Register Relay Nonexistent Node", func(t *testing.T) {
 		body := api.RegisterRelayRequest{
 			NodeID:      "goy-node-nonexistent",
@@ -62,11 +62,11 @@ func TestRelayEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNotFound {
-			t.Fatalf("Esperava status 404, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 404, got: %d", rec.Code)
 		}
 	})
 
-	// 3. POST /relays com URL Inválido -> 400 Bad Request
+	// 3. POST /relays with Invalid URL -> 400 Bad Request
 	t.Run("Register Relay Invalid URL", func(t *testing.T) {
 		body := api.RegisterRelayRequest{
 			NodeID:      nodeID,
@@ -82,11 +82,11 @@ func TestRelayEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("Esperava status 400, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 400, got: %d", rec.Code)
 		}
 	})
 
-	// 4. POST /relays com Sucesso -> 201 Created
+	// 4. POST /relays Success -> 201 Created
 	t.Run("Register Relay Success", func(t *testing.T) {
 		body := api.RegisterRelayRequest{
 			NodeID:      nodeID,
@@ -109,20 +109,20 @@ func TestRelayEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusCreated {
-			t.Fatalf("Esperava status 201, obtido: %d (corpo: %s)", rec.Code, rec.Body.String())
+			t.Fatalf("Expected status 201, got: %d (body: %s)", rec.Code, rec.Body.String())
 		}
 
 		var dto api.RelayDTO
 		if err := json.Unmarshal(rec.Body.Bytes(), &dto); err != nil {
-			t.Fatalf("Falha ao deserializar JSON de resposta: %v", err)
+			t.Fatalf("Failed to deserialize JSON response: %v", err)
 		}
 
 		if dto.NodeID != nodeID || dto.URL != "ws://100.80.1.5:8443" || dto.Storage.AvailableGB != 100 {
-			t.Errorf("Dados de relay recebidos incorretos: %+v", dto)
+			t.Errorf("Incorrect relay data received: %+v", dto)
 		}
 	})
 
-	// 5. GET /relays -> 200 OK (com o relay registado)
+	// 5. GET /relays -> 200 OK (with registered relay)
 	t.Run("Get Relays Active List", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/relays", nil)
 		rec := httptest.NewRecorder()
@@ -130,20 +130,20 @@ func TestRelayEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("Esperava status 200, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 200, got: %d", rec.Code)
 		}
 
 		var resp api.GetRelaysResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("Falha ao deserializar JSON de resposta: %v", err)
+			t.Fatalf("Failed to deserialize JSON response: %v", err)
 		}
 
 		if resp.Total != 1 || len(resp.Relays) != 1 {
-			t.Errorf("Esperado 1 relay ativo, obtido total=%d, len=%d", resp.Total, len(resp.Relays))
+			t.Errorf("Expected 1 active relay, got total=%d, len=%d", resp.Total, len(resp.Relays))
 		}
 
 		if resp.Relays[0].NodeID != nodeID {
-			t.Errorf("NodeID inesperado no relay: %s", resp.Relays[0].NodeID)
+			t.Errorf("Unexpected NodeID in relay: %s", resp.Relays[0].NodeID)
 		}
 	})
 
@@ -163,7 +163,7 @@ func TestRelayEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNoContent {
-			t.Fatalf("Esperava status 204, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 204, got: %d", rec.Code)
 		}
 	})
 
@@ -175,7 +175,7 @@ func TestRelayEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNoContent {
-			t.Fatalf("Esperava status 204, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 204, got: %d", rec.Code)
 		}
 
 		getReq := httptest.NewRequest("GET", "/relays", nil)
@@ -184,14 +184,14 @@ func TestRelayEndpoints(t *testing.T) {
 		router.ServeHTTP(getRec, getReq)
 
 		if getRec.Code != http.StatusOK {
-			t.Fatalf("Esperava status 200, obtido: %d", getRec.Code)
+			t.Fatalf("Expected status 200, got: %d", getRec.Code)
 		}
 
 		var resp api.GetRelaysResponse
 		_ = json.Unmarshal(getRec.Body.Bytes(), &resp)
 
 		if resp.Total != 0 || len(resp.Relays) != 0 {
-			t.Errorf("Esperado 0 relays ativos após deleção, obtido total=%d, len=%d", resp.Total, len(resp.Relays))
+			t.Errorf("Expected 0 active relays after deletion, got total=%d, len=%d", resp.Total, len(resp.Relays))
 		}
 	})
 }

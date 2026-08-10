@@ -11,14 +11,14 @@ import (
 
 const ServerVersion = "0.1.0"
 
-// HealthResponse define o formato da resposta JSON para o endpoint GET /health.
+// HealthResponse defines the JSON response format for the GET /health endpoint.
 type HealthResponse struct {
 	Status  string `json:"status"`
 	Version string `json:"version"`
 	Error   string `json:"error,omitempty"`
 }
 
-// InfoResponse define o formato da resposta JSON para o endpoint GET /info.
+// InfoResponse defines the JSON response format for the GET /info endpoint.
 type InfoResponse struct {
 	Version               string `json:"version"`
 	UptimeSeconds         int64  `json:"uptime_seconds"`
@@ -27,7 +27,7 @@ type InfoResponse struct {
 	VPNIntegrationEnabled bool   `json:"vpn_integration_enabled"`
 }
 
-// HealthHandler processa os pedidos GET /health.
+// HealthHandler processes GET /health requests.
 func HealthHandler(st store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -50,7 +50,7 @@ func HealthHandler(st store.Store) http.HandlerFunc {
 	}
 }
 
-// InfoHandler processa os pedidos GET /info.
+// InfoHandler processes GET /info requests.
 func InfoHandler(cfg *config.Config, startTime time.Time) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -8,38 +8,38 @@ import (
 	"strings"
 )
 
-// ValidateRelayURL verifica se o URL fornecido utiliza esquema ws:// ou wss:// e possui host/porta válidos.
+// ValidateRelayURL verifies that the provided URL uses the ws:// or wss:// scheme and has a valid host and port.
 func ValidateRelayURL(urlStr string) error {
 	urlStr = strings.TrimSpace(urlStr)
 	if urlStr == "" {
-		return errors.New("url do relay não pode estar vazia")
+		return errors.New("relay URL cannot be empty")
 	}
 
 	u, err := url.Parse(urlStr)
 	if err != nil {
-		return fmt.Errorf("formato de URL inválido: %w", err)
+		return fmt.Errorf("invalid URL format: %w", err)
 	}
 
 	if u.Scheme != "ws" && u.Scheme != "wss" {
-		return fmt.Errorf("esquema de URL inválido ('%s'); deve ser 'ws' ou 'wss'", u.Scheme)
+		return fmt.Errorf("invalid URL scheme ('%s'); must be 'ws' or 'wss'", u.Scheme)
 	}
 
 	if u.Host == "" || u.Hostname() == "" {
-		return errors.New("URL do relay deve incluir host válido")
+		return errors.New("relay URL must include a valid host")
 	}
 
 	if u.Port() == "" {
-		return errors.New("URL do relay deve incluir porta explícita (ex: :8443)")
+		return errors.New("relay URL must include an explicit port (e.g. :8443)")
 	}
 
 	return nil
 }
 
-// ValidateFingerprint verifica se a fingerprint TLS cumpre o formato 'sha256:{64_hex_chars}'.
+// ValidateFingerprint verifies that the TLS fingerprint matches the format 'sha256:{64_hex_chars}'.
 func ValidateFingerprint(fp string) error {
 	fp = strings.TrimSpace(fp)
 	if fp == "" {
-		return errors.New("fingerprint não pode estar vazia")
+		return errors.New("fingerprint cannot be empty")
 	}
 
 	hexPart := fp
@@ -48,27 +48,27 @@ func ValidateFingerprint(fp string) error {
 	}
 
 	if len(hexPart) != 64 {
-		return fmt.Errorf("fingerprint inválida; deve ser um hash SHA-256 de 64 caracteres hexadecimais (comprimento obtido: %d)", len(hexPart))
+		return fmt.Errorf("invalid fingerprint; must be a 64-character hex SHA-256 hash (length obtained: %d)", len(hexPart))
 	}
 
 	if _, err := hex.DecodeString(hexPart); err != nil {
-		return fmt.Errorf("caracteres hexadecimais inválidos na fingerprint: %w", err)
+		return fmt.Errorf("invalid hexadecimal characters in fingerprint: %w", err)
 	}
 
 	return nil
 }
 
-// ValidateCapabilities verifica se a lista de capacidades não possui elementos vazios nem duplicados.
+// ValidateCapabilities verifies that the capability list does not contain empty or duplicate elements.
 func ValidateCapabilities(caps []string) error {
 	seen := make(map[string]bool)
 
 	for _, c := range caps {
 		c = strings.TrimSpace(c)
 		if c == "" {
-			return errors.New("lista de capacidades não pode conter elementos vazios")
+			return errors.New("capabilities list cannot contain empty elements")
 		}
 		if seen[c] {
-			return fmt.Errorf("capacidade duplicada detetada: '%s'", c)
+			return fmt.Errorf("duplicate capability detected: '%s'", c)
 		}
 		seen[c] = true
 	}

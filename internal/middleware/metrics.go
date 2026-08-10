@@ -18,7 +18,7 @@ func (rw *statusResponseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-// MetricsMiddleware regista métricas de latência e contagem de pedidos HTTP para o Prometheus.
+// MetricsMiddleware records latency metrics and HTTP request counts for Prometheus.
 func MetricsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// RequestLogger é um middleware HTTP que regista detalhes estruturados de cada pedido via log/slog.
+// RequestLogger is an HTTP middleware that logs structured details of each request via log/slog.
 func RequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)

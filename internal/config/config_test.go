@@ -29,23 +29,23 @@ func TestLoadDefaults(t *testing.T) {
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		t.Fatalf("Esperava sucesso ao carregar defaults, obtido: %v", err)
+		t.Fatalf("Expected success loading defaults, got: %v", err)
 	}
 
 	if cfg.Server.Listen != config.DefaultListen {
-		t.Errorf("Esperava listen %s, obtido %s", config.DefaultListen, cfg.Server.Listen)
+		t.Errorf("Expected listen %s, got %s", config.DefaultListen, cfg.Server.Listen)
 	}
 
 	if cfg.Database.Path != config.DefaultDBPath {
-		t.Errorf("Esperava db path %s, obtido %s", config.DefaultDBPath, cfg.Database.Path)
+		t.Errorf("Expected db path %s, got %s", config.DefaultDBPath, cfg.Database.Path)
 	}
 
 	if cfg.Auth.RequireAuth != true {
-		t.Errorf("Esperava RequireAuth true por defeito")
+		t.Errorf("Expected RequireAuth true by default")
 	}
 
 	if cfg.Jobs.CleanupRelaysIntervalSeconds != config.DefaultCleanupRelaysIntervalSeconds {
-		t.Errorf("Esperava CleanupRelaysIntervalSeconds %d, obtido %d", config.DefaultCleanupRelaysIntervalSeconds, cfg.Jobs.CleanupRelaysIntervalSeconds)
+		t.Errorf("Expected CleanupRelaysIntervalSeconds %d, got %d", config.DefaultCleanupRelaysIntervalSeconds, cfg.Jobs.CleanupRelaysIntervalSeconds)
 	}
 }
 
@@ -67,17 +67,17 @@ func TestLoadEnvOverrides(t *testing.T) {
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		t.Fatalf("Erro inesperado ao carregar config: %v", err)
+		t.Fatalf("Unexpected error loading config: %v", err)
 	}
 
 	if cfg.Auth.AdminAPIKey != "admin-secret-key-123" {
-		t.Errorf("Esperava AdminAPIKey admin-secret-key-123, obtida: %s", cfg.Auth.AdminAPIKey)
+		t.Errorf("Expected AdminAPIKey admin-secret-key-123, got: %s", cfg.Auth.AdminAPIKey)
 	}
 	if cfg.RateLimit.RequestsPerMinute != 120 {
-		t.Errorf("Esperava RateLimit 120, obtido: %d", cfg.RateLimit.RequestsPerMinute)
+		t.Errorf("Expected RateLimit 120, got: %d", cfg.RateLimit.RequestsPerMinute)
 	}
 	if cfg.Jobs.CleanupRelaysIntervalSeconds != 45 {
-		t.Errorf("Esperava CleanupRelaysIntervalSeconds 45, obtido: %d", cfg.Jobs.CleanupRelaysIntervalSeconds)
+		t.Errorf("Expected CleanupRelaysIntervalSeconds 45, got: %d", cfg.Jobs.CleanupRelaysIntervalSeconds)
 	}
 }
 
@@ -87,7 +87,7 @@ func TestConfigValidation(t *testing.T) {
 	invalidListenCfg.Auth.RequireAuth = false
 
 	if err := invalidListenCfg.Validate(); err == nil {
-		t.Errorf("Esperava erro de validação para endereço de listen inválido")
+		t.Errorf("Expected validation error for invalid listen address")
 	}
 
 	emptyDBCfg := config.DefaultConfig()
@@ -95,7 +95,7 @@ func TestConfigValidation(t *testing.T) {
 	emptyDBCfg.Auth.RequireAuth = false
 
 	if err := emptyDBCfg.Validate(); err == nil {
-		t.Errorf("Esperava erro de validação para db path vazio")
+		t.Errorf("Expected validation error for empty db path")
 	}
 
 	authRequiredWithoutKey := config.DefaultConfig()
@@ -103,6 +103,6 @@ func TestConfigValidation(t *testing.T) {
 	authRequiredWithoutKey.Auth.AdminAPIKey = ""
 
 	if err := authRequiredWithoutKey.Validate(); err == nil {
-		t.Errorf("Esperava erro de validação quando RequireAuth é true sem COORD_ADMIN_API_KEY")
+		t.Errorf("Expected validation error when RequireAuth is true without COORD_ADMIN_API_KEY")
 	}
 }

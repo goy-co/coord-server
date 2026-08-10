@@ -31,7 +31,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 			handler.ServeHTTP(rec, req)
 
 			if rec.Code != http.StatusOK {
-				t.Fatalf("Esperava pedido %d ser permitido (200), obtido: %d", i+1, rec.Code)
+				t.Fatalf("Expected request %d to be allowed (200), got: %d", i+1, rec.Code)
 			}
 		}
 	})
@@ -44,11 +44,11 @@ func TestRateLimitMiddleware(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusTooManyRequests {
-			t.Fatalf("Esperava status 429 para pedido excedendo o burst, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 429 for request exceeding burst, got: %d", rec.Code)
 		}
 
 		if rec.Header().Get("Retry-After") == "" {
-			t.Errorf("Esperava header Retry-After presente na resposta 429")
+			t.Errorf("Expected Retry-After header present in 429 response")
 		}
 	})
 
@@ -61,7 +61,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 			handler.ServeHTTP(rec, req)
 
 			if rec.Code != http.StatusOK {
-				t.Fatalf("Caminho público /health deve estar isento de rate limit, obtido: %d", rec.Code)
+				t.Fatalf("Public path /health should be exempt from rate limit, got: %d", rec.Code)
 			}
 		}
 	})

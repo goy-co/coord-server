@@ -28,7 +28,7 @@ func TestAuthMiddleware(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("Esperava status 200 para token válido, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 200 for valid token, got: %d", rec.Code)
 		}
 	})
 
@@ -39,7 +39,7 @@ func TestAuthMiddleware(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("Esperava status 401 para header em falta, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 401 for missing header, got: %d", rec.Code)
 		}
 	})
 
@@ -51,7 +51,7 @@ func TestAuthMiddleware(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("Esperava status 401 para token inválido, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 401 for invalid token, got: %d", rec.Code)
 		}
 	})
 
@@ -62,7 +62,7 @@ func TestAuthMiddleware(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("Esperava status 200 para caminho público /health sem auth, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 200 for public path /health without auth, got: %d", rec.Code)
 		}
 	})
 
@@ -80,7 +80,7 @@ func TestAuthMiddleware(t *testing.T) {
 		disabledHandler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("Esperava status 200 quando RequireAuth=false, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 200 when RequireAuth=false, got: %d", rec.Code)
 		}
 	})
 }

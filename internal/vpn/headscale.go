@@ -15,7 +15,7 @@ import (
 	"github.com/goy-co/coord-server/internal/metrics"
 )
 
-// HeadscaleClient é a implementação de produção da interface VPNProvider para o Headscale.
+// HeadscaleClient is the production implementation of the VPNProvider interface for Headscale.
 type HeadscaleClient struct {
 	baseURL    string
 	apiKey     string
@@ -23,7 +23,7 @@ type HeadscaleClient struct {
 	httpClient *http.Client
 }
 
-// NewHeadscaleClient instancia um novo cliente Headscale.
+// NewHeadscaleClient instantiates a new Headscale client.
 func NewHeadscaleClient(baseURL, apiKey, user string) *HeadscaleClient {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	baseURL = strings.TrimSuffix(baseURL, "/api/v1")
@@ -56,7 +56,7 @@ type preAuthKeyObject struct {
 
 type createPreAuthKeyResponse struct {
 	PreAuthKey preAuthKeyObject `json:"preAuthKey"`
-	Key        string           `json:"key,omitempty"` // Fallback em algumas versões da API
+	Key        string           `json:"key,omitempty"` // Fallback for some API versions
 }
 
 type machineObject struct {
@@ -70,7 +70,7 @@ type listNodesResponse struct {
 	Nodes []machineObject `json:"nodes"`
 }
 
-// CreatePreAuthKey gera uma pre-auth key na API Headscale com suporte a 1 retry para erros transitórios.
+// CreatePreAuthKey generates a pre-auth key on the Headscale API with single-retry support for transient errors.
 func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, reusable bool, expiryHours int) (string, error) {
 	if expiryHours <= 0 {
 		expiryHours = 24
@@ -87,7 +87,7 @@ func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, reusable bool, e
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
 		metrics.VPNErrorsTotal.Inc()
-		return "", fmt.Errorf("headscale: falha ao codificar JSON: %w", err)
+		return "", fmt.Errorf("headscale: failed to encode JSON: %w", err)
 	}
 
 	endpoint := fmt.Sprintf("%s/api/v1/preauthkey", c.baseURL)
@@ -95,7 +95,7 @@ func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, reusable bool, e
 	var lastErr error
 	for attempt := 1; attempt <= 2; attempt++ {
 		if attempt > 1 {
-			slog.Warn("headscale: a tentar novamente chamada CreatePreAuthKey após erro transitório...")
+			slog.Warn("headscale: retrying CreatePreAuthKey call after transient error...")
 			time.Sleep(1 * time.Second)
 		}
 
@@ -112,7 +112,7 @@ func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, reusable bool, e
 	}
 
 	metrics.VPNErrorsTotal.Inc()
-	return "", fmt.Errorf("headscale: falha ao gerar pre-auth key: %w", lastErr)
+	return "", fmt.Errorf("headscale: failed to generate pre-auth key: %w", lastErr)
 }
 
 func (c *HeadscaleClient) doCreatePreAuthKey(ctx context.Context, endpoint string, bodyBytes []byte) (string, bool, error) {
@@ -126,21 +126,21 @@ func (c *HeadscaleClient) doCreatePreAuthKey(ctx context.Context, endpoint strin
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", true, err // Erro de I/O ou timeout é elegível para retry
+		return "", true, err // I/O or timeout error is eligible for retry
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return "", false, errors.New("chave de API do Headscale inválida ou não autorizada (401/403)")
+		return "", false, errors.New("invalid or unauthorized Headscale API key (401/403)")
 	}
 	if resp.StatusCode == http.StatusNotFound {
-		return "", false, fmt.Errorf("usuário '%s' não encontrado no Headscale (404)", c.user)
+		return "", false, fmt.Errorf("user '%s' not found in Headscale (404)", c.user)
 	}
 	if resp.StatusCode >= 500 {
-		return "", true, fmt.Errorf("erro no servidor Headscale (HTTP %d)", resp.StatusCode)
+		return "", true, fmt.Errorf("Headscale server error (HTTP %d)", resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", false, fmt.Errorf("resposta HTTP inesperada do Headscale: %d", resp.StatusCode)
+		return "", false, fmt.Errorf("unexpected HTTP response from Headscale: %d", resp.StatusCode)
 	}
 
 	respBytes, err := io.ReadAll(resp.Body)
@@ -150,7 +150,7 @@ func (c *HeadscaleClient) doCreatePreAuthKey(ctx context.Context, endpoint strin
 
 	var res createPreAuthKeyResponse
 	if err := json.Unmarshal(respBytes, &res); err != nil {
-		return "", false, fmt.Errorf("falha ao descodificar resposta JSON do Headscale: %w", err)
+		return "", false, fmt.Errorf("failed to decode Headscale JSON response: %w", err)
 	}
 
 	key := res.PreAuthKey.Key
@@ -159,13 +159,13 @@ func (c *HeadscaleClient) doCreatePreAuthKey(ctx context.Context, endpoint strin
 	}
 
 	if key == "" {
-		return "", false, errors.New("resposta da API Headscale não continha a chave pre-auth esperada")
+		return "", false, errors.New("Headscale API response did not contain expected pre-auth key")
 	}
 
 	return key, false, nil
 }
 
-// HealthCheck verifica a acessibilidade da API Headscale.
+// HealthCheck checks accessibility of the Headscale API.
 func (c *HeadscaleClient) HealthCheck(ctx context.Context) error {
 	endpoint := fmt.Sprintf("%s/api/v1/node?user=%s", c.baseURL, c.user)
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
@@ -177,19 +177,19 @@ func (c *HeadscaleClient) HealthCheck(ctx context.Context) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		metrics.VPNErrorsTotal.Inc()
-		return fmt.Errorf("headscale inacessível: %w", err)
+		return fmt.Errorf("headscale unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		metrics.VPNErrorsTotal.Inc()
-		return fmt.Errorf("headscale retornou HTTP %d", resp.StatusCode)
+		return fmt.Errorf("headscale returned HTTP %d", resp.StatusCode)
 	}
 
 	return nil
 }
 
-// GetStatus obtém estatísticas para o endpoint de diagnóstico /v1/vpn/status.
+// GetStatus retrieves statistics for the diagnostic endpoint /v1/vpn/status.
 func (c *HeadscaleClient) GetStatus(ctx context.Context) (*VPNStatusResponse, error) {
 	status := &VPNStatusResponse{
 		VPNEnabled:         true,

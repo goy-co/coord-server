@@ -7,26 +7,26 @@ import (
 )
 
 var (
-	// ErrNotImplemented é retornado quando um método ainda não está implementado.
+	// ErrNotImplemented is returned when a method is not yet implemented.
 	ErrNotImplemented = errors.New("method not implemented")
-	// ErrNodeNotFound é retornado quando um nó não é encontrado na base de dados.
+	// ErrNodeNotFound is returned when a node is not found in the database.
 	ErrNodeNotFound = errors.New("node not found")
-	// ErrRelayNotFound é retornado quando um relay não é encontrado na base de dados.
+	// ErrRelayNotFound is returned when a relay is not found in the database.
 	ErrRelayNotFound = errors.New("relay not found")
 )
 
-// Store define a interface de acesso à persistência de dados do coord-server.
+// Store defines the data persistence interface for coord-server.
 type Store interface {
-	// Init inicializa o esquema da base de dados (tabelas/índices).
+	// Init initializes the database schema (tables/indexes).
 	Init(ctx context.Context) error
 
-	// HealthCheck verifica a conectividade à base de dados.
+	// HealthCheck checks database connectivity.
 	HealthCheck(ctx context.Context) error
 
-	// Close fecha as conexões com a base de dados.
+	// Close closes database connections.
 	Close() error
 
-	// Métodos CRUD para Node
+	// Node CRUD methods
 	CreateNode(ctx context.Context, node *Node) error
 	GetNodeByID(ctx context.Context, id string) (*Node, error)
 	GetNodeByAuthKeyHash(ctx context.Context, hash string) (*Node, error)
@@ -37,7 +37,7 @@ type Store interface {
 	CleanupInactiveNodes(ctx context.Context, thresholdHours int) (int, error)
 	GetNodeCountsByStatus(ctx context.Context) (map[string]int, error)
 
-	// Métodos CRUD para Relay
+	// Relay CRUD methods
 	UpsertRelay(ctx context.Context, relay *Relay) error
 	GetRelayByNodeID(ctx context.Context, nodeID string) (*Relay, error)
 	ListActiveRelays(ctx context.Context, ttlWindowSeconds int, since *time.Time, minStorageGB uint64, limit int) ([]Relay, int, error)

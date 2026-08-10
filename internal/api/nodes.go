@@ -14,13 +14,13 @@ import (
 	"github.com/goy-co/coord-server/internal/vpn"
 )
 
-// StoragePayload representa as estatísticas de armazenamento enviadas no onboarding.
+// StoragePayload represents the storage statistics sent during onboarding.
 type StoragePayload struct {
 	ReservedGB  uint64 `json:"reserved_gb"`
 	AvailableGB uint64 `json:"available_gb"`
 }
 
-// RegisterNodeRequest representa o body do pedido POST /v1/nodes/register.
+// RegisterNodeRequest represents the request body for POST /v1/nodes/register.
 type RegisterNodeRequest struct {
 	AuthKey string          `json:"auth_key"`
 	Name    string          `json:"name,omitempty"`
@@ -28,13 +28,13 @@ type RegisterNodeRequest struct {
 	MeshURL string          `json:"mesh_url,omitempty"`
 }
 
-// VPNConfigResponse representa a configuração VPN retornada ao nó.
+// VPNConfigResponse represents the VPN configuration returned to the node.
 type VPNConfigResponse struct {
 	AuthKey    string `json:"auth_key"`
 	ControlURL string `json:"control_url"`
 }
 
-// RegisterNodeResponse representa a resposta do pedido POST /v1/nodes/register.
+// RegisterNodeResponse represents the response for POST /v1/nodes/register.
 type RegisterNodeResponse struct {
 	NodeID      string            `json:"node_id"`
 	Name        string            `json:"name"`
@@ -44,35 +44,35 @@ type RegisterNodeResponse struct {
 	CreatedAt   time.Time         `json:"created_at"`
 }
 
-// RegisterNodeHandler lida com o pedido POST /v1/nodes/register.
+// RegisterNodeHandler handles the POST /v1/nodes/register request.
 func RegisterNodeHandler(st store.Store, cfg *config.Config, vpnProvider vpn.VPNProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req RegisterNodeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			WriteBadRequest(w, "formato JSON do pedido inválido")
+			WriteBadRequest(w, "invalid request JSON body")
 			return
 		}
 
 		if !ValidateAuthKeyFormat(req.AuthKey) {
-			WriteBadRequest(w, "formato de auth_key inválido (deve iniciar com 'gc_' e ter pelo menos 20 caracteres)")
+			WriteBadRequest(w, "invalid auth_key format (must start with 'gc_' and be at least 20 characters long)")
 			return
 		}
 
 		authHash := HashAuthKey(req.AuthKey, cfg.Auth.HMACSecret)
 
-		// 1. Verificar idempotência: nó já registado com esta auth key
+		// 1. Check idempotency: node already registered with this auth key
 		existingNode, err := st.GetNodeByAuthKeyHash(r.Context(), authHash)
 		if err == nil && existingNode != nil {
-			slog.Info("Registo de nó idempotente (já existente)", slog.String("node_id", existingNode.ID))
+			slog.Info("Idempotent node registration (already existing)", slog.String("node_id", existingNode.ID))
 			sendRegisterResponse(w, r, existingNode, http.StatusOK, cfg, vpnProvider)
 			return
 		} else if err != nil && !errors.Is(err, store.ErrNodeNotFound) {
-			slog.Error("Erro ao procurar nó por auth key hash", slog.String("error", err.Error()))
+			slog.Error("Error looking up node by auth key hash", slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}
 
-		// 2. Criar novo nó
+		// 2. Create new node
 		nodeID := GenerateNodeID()
 		newNode := &store.Node{
 			ID:          nodeID,
@@ -90,12 +90,12 @@ func RegisterNodeHandler(st store.Store, cfg *config.Config, vpnProvider vpn.VPN
 		}
 
 		if err := st.CreateNode(r.Context(), newNode); err != nil {
-			slog.Error("Erro ao guardar novo nó na base de dados", slog.String("node_id", nodeID), slog.String("error", err.Error()))
+			slog.Error("Error saving new node to database", slog.String("node_id", nodeID), slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}
 
-		slog.Info("Novo nó registado com sucesso", slog.String("node_id", nodeID), slog.String("name", req.Name))
+		slog.Info("New node registered successfully", slog.String("node_id", nodeID), slog.String("name", req.Name))
 		sendRegisterResponse(w, r, newNode, http.StatusCreated, cfg, vpnProvider)
 	}
 }
@@ -112,11 +112,11 @@ func sendRegisterResponse(w http.ResponseWriter, r *http.Request, n *store.Node,
 	if cfg.VPN.Enabled && vpnProvider != nil {
 		key, err := vpnProvider.CreatePreAuthKey(r.Context(), cfg.VPN.PreAuthKeyReusable, cfg.VPN.PreAuthKeyExpiryHours)
 		if err != nil {
-			slog.Warn("headscale: falha ao gerar pre-auth key, prosseguindo com vpn_config vazio", slog.String("error", err.Error()))
+			slog.Warn("headscale: failed to generate pre-auth key, proceeding with empty vpn_config", slog.String("error", err.Error()))
 		} else {
 			vpnAuthKey = key
 			vpnControlURL = vpnProvider.GetControlURL()
-			slog.Info("Pre-auth key do Headscale gerada com sucesso para o nó", slog.String("node_id", n.ID))
+			slog.Info("Headscale pre-auth key generated successfully for node", slog.String("node_id", n.ID))
 		}
 	} else {
 		slog.Debug("VPN integration disabled, returning empty vpn_config")
@@ -139,12 +139,12 @@ func sendRegisterResponse(w http.ResponseWriter, r *http.Request, n *store.Node,
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// GetNodeHandler lida com o pedido GET /v1/nodes/{id}.
+// GetNodeHandler handles the GET /v1/nodes/{id} request.
 func GetNodeHandler(st store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		nodeID := chi.URLParam(r, "id")
 		if nodeID == "" {
-			WriteBadRequest(w, "parâmetro id em falta no caminho")
+			WriteBadRequest(w, "missing id URL parameter")
 			return
 		}
 
@@ -154,7 +154,7 @@ func GetNodeHandler(st store.Store) http.HandlerFunc {
 				WriteNotFound(w, "node", nodeID)
 				return
 			}
-			slog.Error("Erro ao procurar nó por ID", slog.String("node_id", nodeID), slog.String("error", err.Error()))
+			slog.Error("Error looking up node by ID", slog.String("node_id", nodeID), slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}
@@ -165,12 +165,12 @@ func GetNodeHandler(st store.Store) http.HandlerFunc {
 	}
 }
 
-// DeleteNodeHandler lida com o pedido DELETE /v1/nodes/{id} (soft delete).
+// DeleteNodeHandler handles the DELETE /v1/nodes/{id} request (soft delete).
 func DeleteNodeHandler(st store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		nodeID := chi.URLParam(r, "id")
 		if nodeID == "" {
-			WriteBadRequest(w, "parâmetro id em falta no caminho")
+			WriteBadRequest(w, "missing id URL parameter")
 			return
 		}
 
@@ -179,17 +179,17 @@ func DeleteNodeHandler(st store.Store) http.HandlerFunc {
 				WriteNotFound(w, "node", nodeID)
 				return
 			}
-			slog.Error("Erro ao eliminar nó por ID", slog.String("node_id", nodeID), slog.String("error", err.Error()))
+			slog.Error("Error deleting node by ID", slog.String("node_id", nodeID), slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}
 
-		slog.Info("Nó marcado como apagado (soft delete)", slog.String("node_id", nodeID))
+		slog.Info("Node marked as deleted (soft delete)", slog.String("node_id", nodeID))
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
-// GetVPNStatusHandler lida com o pedido GET /v1/vpn/status para diagnóstico da infraestrutura VPN.
+// GetVPNStatusHandler handles the GET /v1/vpn/status request for VPN infrastructure diagnostics.
 func GetVPNStatusHandler(vpnProvider vpn.VPNProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if vpnProvider == nil {
@@ -199,7 +199,7 @@ func GetVPNStatusHandler(vpnProvider vpn.VPNProvider) http.HandlerFunc {
 
 		status, err := vpnProvider.GetStatus(r.Context())
 		if err != nil {
-			slog.Error("Erro ao obter estado de diagnóstico da VPN", slog.String("error", err.Error()))
+			slog.Error("Error obtaining VPN diagnostic status", slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}

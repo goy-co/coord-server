@@ -12,44 +12,44 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// ServerConfig possui as definições de rede e timeouts do servidor HTTP.
+// ServerConfig holds network and timeout definitions for the HTTP server.
 type ServerConfig struct {
 	Listen              string `toml:"listen"`
 	ReadTimeoutSeconds  int    `toml:"read_timeout_seconds"`
 	WriteTimeoutSeconds int    `toml:"write_timeout_seconds"`
 }
 
-// DatabaseConfig possui as definições de persistência de dados.
+// DatabaseConfig holds data persistence definitions.
 type DatabaseConfig struct {
 	Path string `toml:"path"`
 }
 
-// AuthConfig possui as chaves e regras de autenticação da API.
+// AuthConfig holds keys and authentication rules for the API.
 type AuthConfig struct {
 	RequireAuth bool     `toml:"require_auth"`
-	AdminAPIKey string   `toml:"-"` // Nunca lido via TOML, apenas via env var COORD_ADMIN_API_KEY
-	HMACSecret  string   `toml:"-"` // Nunca lido via TOML, apenas via env var COORD_AUTH_SECRET
+	AdminAPIKey string   `toml:"-"` // Never read from TOML, only via env var COORD_ADMIN_API_KEY
+	HMACSecret  string   `toml:"-"` // Never read from TOML, only via env var COORD_AUTH_SECRET
 	PublicPaths []string `toml:"public_paths"`
 }
 
-// VPNConfig possui os parâmetros de integração com a rede VPN / Headscale.
+// VPNConfig holds parameters for integration with Headscale VPN control plane.
 type VPNConfig struct {
 	Enabled               bool   `toml:"enabled"`
 	HeadscaleAPIURL       string `toml:"headscale_api_url"`
-	HeadscaleAPIKey       string `toml:"-"` // Nunca lido via TOML, apenas via env var COORD_HEADSCALE_API_KEY
+	HeadscaleAPIKey       string `toml:"-"` // Never read from TOML, only via env var COORD_HEADSCALE_API_KEY
 	HeadscaleUser         string `toml:"headscale_user"`
 	PreAuthKeyExpiryHours int    `toml:"preauth_key_expiry_hours"`
 	PreAuthKeyReusable    bool   `toml:"preauth_key_reusable"`
 }
 
-// RateLimitConfig possui as regras de limitação de taxa de pedidos HTTP.
+// RateLimitConfig holds HTTP request rate limiting rules.
 type RateLimitConfig struct {
 	RequestsPerMinute int `toml:"requests_per_minute"`
 	Burst             int `toml:"burst"`
 	HeartbeatRPM      int `toml:"heartbeat_rpm"`
 }
 
-// JobsConfig possui os intervalos e regras de execução de background jobs.
+// JobsConfig holds execution intervals for background maintenance jobs.
 type JobsConfig struct {
 	CleanupRelaysIntervalSeconds int `toml:"cleanup_relays_interval_seconds"`
 	CleanupNodesIntervalSeconds  int `toml:"cleanup_nodes_interval_seconds"`
@@ -57,14 +57,14 @@ type JobsConfig struct {
 	NodeInactiveThresholdHours   int `toml:"node_inactive_threshold_hours"`
 }
 
-// RegistryConfig possui as definições do serviço de descoberta de relays.
+// RegistryConfig holds definitions for the relay discovery service.
 type RegistryConfig struct {
 	RelayTTLSeconds          int `toml:"relay_ttl_seconds"`
 	DiscoveryCacheTTLSeconds int `toml:"discovery_cache_ttl_seconds"`
 	MaxRelaysPerResponse     int `toml:"max_relays_per_response"`
 }
 
-// Config agrega todas as secções de configuração do coord-server.
+// Config aggregates all configuration sections of coord-server.
 type Config struct {
 	Server    ServerConfig    `toml:"server"`
 	Database  DatabaseConfig  `toml:"database"`
@@ -98,7 +98,7 @@ const (
 
 var DefaultPublicPaths = []string{"/health", "/info", "/metrics"}
 
-// DefaultConfig cria uma instância de Config com os valores por omissão.
+// DefaultConfig creates a Config instance with default values.
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -142,7 +142,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Load carrega a configuração a partir do ficheiro TOML indicado, aplica defaults e overrides de env vars.
+// Load loads configuration from the specified TOML file, applying defaults and env var overrides.
 func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
@@ -154,10 +154,10 @@ func Load(path string) (*Config, error) {
 		} else if err == nil {
 			data, err := os.ReadFile(path)
 			if err != nil {
-				return nil, fmt.Errorf("erro ao ler ficheiro de configuração %s: %w", path, err)
+				return nil, fmt.Errorf("error reading configuration file %s: %w", path, err)
 			}
 			if err := toml.Unmarshal(data, cfg); err != nil {
-				return nil, fmt.Errorf("erro ao descodificar TOML de %s: %w", path, err)
+				return nil, fmt.Errorf("error decoding TOML from %s: %w", path, err)
 			}
 		}
 	}
@@ -166,7 +166,7 @@ func Load(path string) (*Config, error) {
 	applyEnvOverrides(cfg)
 
 	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("validação de configuração falhou: %w", err)
+		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
 
 	return cfg, nil
@@ -301,40 +301,40 @@ func applyEnvOverrides(cfg *Config) {
 	}
 }
 
-// Validate verifica se a configuração tem os campos obrigatórios válidos.
+// Validate verifies that required configuration fields are valid.
 func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Server.Listen) == "" {
-		return errors.New("server.listen não pode estar vazio")
+		return errors.New("server.listen cannot be empty")
 	}
 
 	_, _, err := net.SplitHostPort(c.Server.Listen)
 	if err != nil {
-		return fmt.Errorf("server.listen inválido ('%s'): %w", c.Server.Listen, err)
+		return fmt.Errorf("invalid server.listen ('%s'): %w", c.Server.Listen, err)
 	}
 
 	if strings.TrimSpace(c.Database.Path) == "" {
-		return errors.New("database.path não pode estar vazio")
+		return errors.New("database.path cannot be empty")
 	}
 
 	if c.Auth.RequireAuth {
 		if strings.TrimSpace(c.Auth.AdminAPIKey) == "" {
-			return errors.New("auth.require_auth é true mas COORD_ADMIN_API_KEY não foi definida nas variáveis de ambiente")
+			return errors.New("auth.require_auth is true but COORD_ADMIN_API_KEY is not set in environment variables")
 		}
 	}
 
 	if c.VPN.Enabled {
 		if strings.TrimSpace(c.VPN.HeadscaleAPIURL) == "" {
-			return errors.New("vpn.enabled é true mas vpn.headscale_api_url (COORD_HEADSCALE_API_URL) está vazio")
+			return errors.New("vpn.enabled is true but vpn.headscale_api_url (COORD_HEADSCALE_API_URL) is empty")
 		}
 		if strings.TrimSpace(c.VPN.HeadscaleAPIKey) == "" {
-			return errors.New("vpn.enabled é true mas COORD_HEADSCALE_API_KEY está vazio")
+			return errors.New("vpn.enabled is true but COORD_HEADSCALE_API_KEY is empty")
 		}
 	}
 
 	return nil
 }
 
-// generateDefaultConfigFile cria o ficheiro config.toml com comentários explicativos em português.
+// generateDefaultConfigFile creates the config.toml file with explanatory comments.
 func generateDefaultConfigFile(path string) error {
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
@@ -343,80 +343,80 @@ func generateDefaultConfigFile(path string) error {
 		}
 	}
 
-	content := `# Configuração do Coord Server (Goy Mesh Network)
-# Este ficheiro é gerado automaticamente com os valores por omissão.
+	content := `# Coord Server Configuration (Goy Mesh Network)
+# This file is automatically generated with default values.
 
 [server]
-# Endereço e porta em que o servidor HTTP vai escutar.
+# Address and port on which the HTTP server will listen.
 listen = "0.0.0.0:8080"
 
-# Timeouts do servidor HTTP (em segundos).
+# HTTP server timeouts (in seconds).
 read_timeout_seconds = 15
 write_timeout_seconds = 15
 
 [database]
-# Caminho para o ficheiro de base de dados SQLite.
+# Path to SQLite database file.
 path = "data/coord-server.db"
 
 [auth]
-# Ativar autenticação por API key em endpoints protegidos (default: true)
+# Enable API key authentication on protected endpoints (default: true)
 require_auth = true
 
-# Rotas públicas isentas de autenticação
+# Public routes exempt from authentication
 public_paths = ["/health", "/info", "/metrics"]
 
-# Nota: A chave de API do administrador NUNCA deve ser guardada neste ficheiro.
-# Defina a variável de ambiente COORD_ADMIN_API_KEY no ambiente de execução.
+# Note: The administrator API key must NEVER be stored in this file.
+# Set the COORD_ADMIN_API_KEY environment variable in your execution environment.
 
 [vpn]
-# Ativar ou desativar integração com Headscale (default: false)
+# Enable or disable Headscale integration (default: false)
 enabled = false
 
-# URL base da API Headscale (ex: https://vpn.goyco.xyz)
+# Headscale API base URL (e.g., https://vpn.goyco.xyz)
 headscale_api_url = ""
 
-# Usuário/Namespace onde os nós são registados no Headscale
+# User/Namespace where nodes are registered in Headscale
 headscale_user = "goy-nodes"
 
-# Validade das pre-auth keys geradas (em horas)
+# Validity of generated pre-auth keys (in hours)
 preauth_key_expiry_hours = 24
 
-# Se as pre-auth keys geradas podem ser reutilizadas
+# Whether generated pre-auth keys can be reused
 preauth_key_reusable = false
 
-# Nota: A chave de API do Headscale deve ser fornecida via variável de ambiente COORD_HEADSCALE_API_KEY.
+# Note: The Headscale API key must be provided via the COORD_HEADSCALE_API_KEY environment variable.
 
 [rate_limit]
-# Limite global de pedidos HTTP por minuto por IP
+# Global HTTP request limit per minute per IP
 requests_per_minute = 60
 
-# Tamanho do picos curtos (burst) permitidos
-burst = 10
+# Maximum burst size allowed
+burst = 30
 
-# Limite específico para pedidos de heartbeat (/relays/{id} PUT) por minuto por IP
+# Specific limit for heartbeat requests (PUT /relays/{id}) per minute per IP
 heartbeat_rpm = 120
 
 [jobs]
-# Intervalo de execução do job de limpeza de relays stale (em segundos)
+# Execution interval for stale relay cleanup job (in seconds)
 cleanup_relays_interval_seconds = 60
 
-# Intervalo de execução do job de verificação de nós inativos (em segundos)
+# Execution interval for inactive node cleanup job (in seconds)
 cleanup_nodes_interval_seconds = 300
 
-# Intervalo de atualização das estatísticas e métricas de nós e relays (em segundos)
+# Update interval for node and relay metrics and stats (in seconds)
 stats_refresh_interval_seconds = 30
 
-# Threshold temporal para um nó sem atividade ser considerado inativo (em horas)
+# Time threshold for a node without activity to be considered inactive (in hours)
 node_inactive_threshold_hours = 24
 
 [registry]
-# Janela temporal de atividade para um relay ser considerado ativo (em segundos).
+# Activity time window for a relay to be considered active (in seconds).
 relay_ttl_seconds = 300
 
-# TTL do cache em memória para a rota GET /relays (em segundos).
+# In-memory cache TTL for GET /relays route (in seconds).
 discovery_cache_ttl_seconds = 15
 
-# Número máximo de relays retornados por resposta de discovery.
+# Maximum number of relays returned per discovery response.
 max_relays_per_response = 100
 `
 

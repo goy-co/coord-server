@@ -24,7 +24,7 @@ func TestNormalizePath(t *testing.T) {
 	for _, tt := range tests {
 		got := metrics.NormalizePath(tt.input)
 		if got != tt.expected {
-			t.Errorf("NormalizePath(%q) = %q, esperava %q", tt.input, got, tt.expected)
+			t.Errorf("NormalizePath(%q) = %q, expected %q", tt.input, got, tt.expected)
 		}
 	}
 }

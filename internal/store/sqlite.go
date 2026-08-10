@@ -13,25 +13,25 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// SQLiteStore é a implementação da interface Store utilizando SQLite via modernc.org/sqlite.
+// SQLiteStore is the Store interface implementation using SQLite via modernc.org/sqlite.
 type SQLiteStore struct {
 	db     *sql.DB
 	dbPath string
 }
 
-// NewSQLiteStore instancia um novo SQLiteStore com o caminho especificado.
+// NewSQLiteStore instantiates a new SQLiteStore with the specified database path.
 func NewSQLiteStore(dbPath string) *SQLiteStore {
 	return &SQLiteStore{
 		dbPath: dbPath,
 	}
 }
 
-// Init abre a conexão, ativa o WAL mode e executa as DDLs iniciais de migração.
+// Init opens the connection, enables WAL mode, and executes initial migration DDLs.
 func (s *SQLiteStore) Init(ctx context.Context) error {
 	dir := filepath.Dir(s.dbPath)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("falha ao criar diretoria da base de dados %s: %w", dir, err)
+			return fmt.Errorf("failed to create database directory %s: %w", dir, err)
 		}
 	}
 
@@ -39,7 +39,7 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return fmt.Errorf("falha ao abrir base de dados sqlite (%s): %w", s.dbPath, err)
+		return fmt.Errorf("failed to open sqlite database (%s): %w", s.dbPath, err)
 	}
 
 	db.SetMaxOpenConns(10)
@@ -50,12 +50,12 @@ func (s *SQLiteStore) Init(ctx context.Context) error {
 
 	if err := s.HealthCheck(ctx); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("verificação de conectividade falhou na inicialização: %w", err)
+		return fmt.Errorf("connectivity check failed during initialization: %w", err)
 	}
 
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("falha ao executar migração da base de dados: %w", err)
+		return fmt.Errorf("failed to execute database migration: %w", err)
 	}
 
 	return nil
@@ -98,10 +98,10 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 
 	_, err := s.db.ExecContext(ctx, schema)
 	if err != nil {
-		return fmt.Errorf("erro ao criar esquema de tabelas: %w", err)
+		return fmt.Errorf("error creating table schema: %w", err)
 	}
 
-	// Adicionar colunas se as tabelas tiverem sido criadas numa versão prévia (Step 1)
+	// Add columns if tables were created in a previous schema version
 	alterNodeQueries := []string{
 		"ALTER TABLE nodes ADD COLUMN name TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE nodes ADD COLUMN storage_reserved_gb INTEGER NOT NULL DEFAULT 0",
@@ -138,28 +138,28 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	`
 	_, err = s.db.ExecContext(ctx, indexes)
 	if err != nil {
-		return fmt.Errorf("erro ao criar índices: %w", err)
+		return fmt.Errorf("error creating indexes: %w", err)
 	}
 
 	return nil
 }
 
-// HealthCheck executa um teste simples na conexão SQLite.
+// HealthCheck performs a simple ping test on the SQLite connection.
 func (s *SQLiteStore) HealthCheck(ctx context.Context) error {
 	if s.db == nil {
-		return fmt.Errorf("base de dados não inicializada")
+		return fmt.Errorf("database not initialized")
 	}
 
 	var ping int
 	err := s.db.QueryRowContext(ctx, "SELECT 1").Scan(&ping)
 	if err != nil {
-		return fmt.Errorf("erro ao pingar base de dados SQLite: %w", err)
+		return fmt.Errorf("error pinging SQLite database: %w", err)
 	}
 
 	return nil
 }
 
-// Close encerra a conexão com o ficheiro SQLite.
+// Close closes the SQLite file connection.
 func (s *SQLiteStore) Close() error {
 	if s.db != nil {
 		return s.db.Close()
@@ -203,7 +203,7 @@ func (s *SQLiteStore) CreateNode(ctx context.Context, node *Node) error {
 		node.DeletedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("erro ao criar nó (%s): %w", node.ID, err)
+		return fmt.Errorf("error creating node (%s): %w", node.ID, err)
 	}
 
 	return nil
@@ -264,7 +264,7 @@ func (s *SQLiteStore) GetNodeByID(ctx context.Context, id string) (*Node, error)
 		if errors.Is(err, ErrNodeNotFound) {
 			return nil, ErrNodeNotFound
 		}
-		return nil, fmt.Errorf("erro ao procurar nó por ID (%s): %w", id, err)
+		return nil, fmt.Errorf("error looking up node by ID (%s): %w", id, err)
 	}
 
 	return node, nil
@@ -284,7 +284,7 @@ func (s *SQLiteStore) GetNodeByAuthKeyHash(ctx context.Context, hash string) (*N
 		if errors.Is(err, ErrNodeNotFound) {
 			return nil, ErrNodeNotFound
 		}
-		return nil, fmt.Errorf("erro ao procurar nó por auth key hash: %w", err)
+		return nil, fmt.Errorf("error looking up node by auth key hash: %w", err)
 	}
 
 	return node, nil
@@ -311,7 +311,7 @@ func (s *SQLiteStore) UpdateNode(ctx context.Context, node *Node) error {
 		node.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("erro ao atualizar nó (%s): %w", node.ID, err)
+		return fmt.Errorf("error updating node (%s): %w", node.ID, err)
 	}
 
 	affected, err := res.RowsAffected()
@@ -336,7 +336,7 @@ func (s *SQLiteStore) DeleteNode(ctx context.Context, id string) error {
 
 	res, err := s.db.ExecContext(ctx, query, now, now, id)
 	if err != nil {
-		return fmt.Errorf("erro ao efetuar soft delete do nó (%s): %w", id, err)
+		return fmt.Errorf("error performing soft delete on node (%s): %w", id, err)
 	}
 
 	affected, err := res.RowsAffected()
@@ -392,12 +392,12 @@ func (s *SQLiteStore) ListNodes(ctx context.Context, status string, limit, offse
 
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("erro ao contar nós: %w", err)
+		return nil, 0, fmt.Errorf("error counting nodes: %w", err)
 	}
 
 	rows, err := s.db.QueryContext(ctx, selectQuery, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("erro ao listar nós: %w", err)
+		return nil, 0, fmt.Errorf("error listing nodes: %w", err)
 	}
 	defer rows.Close()
 
@@ -405,7 +405,7 @@ func (s *SQLiteStore) ListNodes(ctx context.Context, status string, limit, offse
 	for rows.Next() {
 		node, err := scanNode(rows)
 		if err != nil {
-			return nil, 0, fmt.Errorf("erro ao ler registo de nó: %w", err)
+			return nil, 0, fmt.Errorf("error reading node record: %w", err)
 		}
 		nodes = append(nodes, *node)
 	}
@@ -428,7 +428,7 @@ func (s *SQLiteStore) TouchNode(ctx context.Context, id string) error {
 
 	res, err := s.db.ExecContext(ctx, query, now, now, id)
 	if err != nil {
-		return fmt.Errorf("erro ao atualizar last_seen_at do nó (%s): %w", id, err)
+		return fmt.Errorf("error updating node last_seen_at (%s): %w", id, err)
 	}
 
 	affected, err := res.RowsAffected()
@@ -458,7 +458,7 @@ func (s *SQLiteStore) CleanupInactiveNodes(ctx context.Context, thresholdHours i
 
 	res, err := s.db.ExecContext(ctx, query, now, cutoff)
 	if err != nil {
-		return 0, fmt.Errorf("erro ao marcar nós inativos: %w", err)
+		return 0, fmt.Errorf("error marking inactive nodes: %w", err)
 	}
 
 	affected, err := res.RowsAffected()
@@ -473,7 +473,7 @@ func (s *SQLiteStore) GetNodeCountsByStatus(ctx context.Context) (map[string]int
 	query := "SELECT status, COUNT(*) FROM nodes GROUP BY status;"
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao obter contagem de nós por estado: %w", err)
+		return nil, fmt.Errorf("error getting node counts by status: %w", err)
 	}
 	defer rows.Close()
 
@@ -588,7 +588,7 @@ func (s *SQLiteStore) UpsertRelay(ctx context.Context, relay *Relay) error {
 		relay.UpdatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("erro no UpsertRelay para node_id (%s): %w", relay.NodeID, err)
+		return fmt.Errorf("error in UpsertRelay for node_id (%s): %w", relay.NodeID, err)
 	}
 
 	return nil
@@ -608,7 +608,7 @@ func (s *SQLiteStore) GetRelayByNodeID(ctx context.Context, nodeID string) (*Rel
 		if errors.Is(err, ErrRelayNotFound) {
 			return nil, ErrRelayNotFound
 		}
-		return nil, fmt.Errorf("erro ao procurar relay por node_id (%s): %w", nodeID, err)
+		return nil, fmt.Errorf("error looking up relay by node_id (%s): %w", nodeID, err)
 	}
 
 	return relay, nil
@@ -639,7 +639,7 @@ func (s *SQLiteStore) ListActiveRelays(ctx context.Context, ttlWindowSeconds int
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM relays %s;", whereClause)
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("erro ao contar relays ativos: %w", err)
+		return nil, 0, fmt.Errorf("error counting active relays: %w", err)
 	}
 
 	selectQuery := fmt.Sprintf(`
@@ -654,7 +654,7 @@ func (s *SQLiteStore) ListActiveRelays(ctx context.Context, ttlWindowSeconds int
 	selectArgs := append(args, limit)
 	rows, err := s.db.QueryContext(ctx, selectQuery, selectArgs...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("erro ao listar relays ativos: %w", err)
+		return nil, 0, fmt.Errorf("error listing active relays: %w", err)
 	}
 	defer rows.Close()
 
@@ -662,7 +662,7 @@ func (s *SQLiteStore) ListActiveRelays(ctx context.Context, ttlWindowSeconds int
 	for rows.Next() {
 		r, err := scanRelay(rows)
 		if err != nil {
-			return nil, 0, fmt.Errorf("erro ao ler registo de relay: %w", err)
+			return nil, 0, fmt.Errorf("error reading relay record: %w", err)
 		}
 		relays = append(relays, *r)
 	}
@@ -698,7 +698,7 @@ func (s *SQLiteStore) UpdateRelayHeartbeat(ctx context.Context, nodeID string, s
 
 	res, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("erro ao atualizar heartbeat do relay (%s): %w", nodeID, err)
+		return fmt.Errorf("error updating relay heartbeat (%s): %w", nodeID, err)
 	}
 
 	affected, err := res.RowsAffected()
@@ -723,7 +723,7 @@ func (s *SQLiteStore) MarkRelayUnreachable(ctx context.Context, nodeID string) e
 
 	res, err := s.db.ExecContext(ctx, query, now, nodeID)
 	if err != nil {
-		return fmt.Errorf("erro ao marcar relay como unreachable (%s): %w", nodeID, err)
+		return fmt.Errorf("error marking relay unreachable (%s): %w", nodeID, err)
 	}
 
 	affected, err := res.RowsAffected()
@@ -742,7 +742,7 @@ func (s *SQLiteStore) DeleteRelay(ctx context.Context, nodeID string) error {
 
 	res, err := s.db.ExecContext(ctx, query, nodeID)
 	if err != nil {
-		return fmt.Errorf("erro ao eliminar relay (%s): %w", nodeID, err)
+		return fmt.Errorf("error deleting relay (%s): %w", nodeID, err)
 	}
 
 	affected, err := res.RowsAffected()
@@ -766,7 +766,7 @@ func (s *SQLiteStore) CountActiveRelays(ctx context.Context, ttlWindowSeconds in
 
 	var count int
 	if err := s.db.QueryRowContext(ctx, query, cutoffTime).Scan(&count); err != nil {
-		return 0, fmt.Errorf("erro ao contar relays ativos: %w", err)
+		return 0, fmt.Errorf("error counting active relays: %w", err)
 	}
 
 	return count, nil
@@ -781,7 +781,7 @@ func (s *SQLiteStore) CleanupStaleRelays(ctx context.Context, ttlSeconds int) (i
 	unreachableCutoff := now.Add(-time.Duration(ttlSeconds) * time.Second)
 	deleteCutoff := now.Add(-2 * time.Duration(ttlSeconds) * time.Second)
 
-	// 1. Marcar como unreachable relays em estado 'active' mas com last_seen_at < unreachableCutoff
+	// 1. Mark relays as unreachable if in 'active' status but last_seen_at < unreachableCutoff
 	unreachableQuery := `
 	UPDATE relays
 	SET status = 'unreachable', updated_at = ?
@@ -789,18 +789,18 @@ func (s *SQLiteStore) CleanupStaleRelays(ctx context.Context, ttlSeconds int) (i
 	`
 	res1, err := s.db.ExecContext(ctx, unreachableQuery, now, unreachableCutoff)
 	if err != nil {
-		return 0, 0, fmt.Errorf("erro ao marcar relays como unreachable: %w", err)
+		return 0, 0, fmt.Errorf("error marking relays unreachable: %w", err)
 	}
 	markedUnreachable, _ := res1.RowsAffected()
 
-	// 2. Eliminar (hard delete) relays que estejam unreachable há mais de 2x TTL
+	// 2. Hard delete relays that have been unreachable for longer than 2x TTL
 	deleteQuery := `
 	DELETE FROM relays
 	WHERE status = 'unreachable' AND last_seen_at < ?;
 	`
 	res2, err := s.db.ExecContext(ctx, deleteQuery, deleteCutoff)
 	if err != nil {
-		return int(markedUnreachable), 0, fmt.Errorf("erro ao eliminar relays expirados: %w", err)
+		return int(markedUnreachable), 0, fmt.Errorf("error deleting expired relays: %w", err)
 	}
 	deletedExpired, _ := res2.RowsAffected()
 

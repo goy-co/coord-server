@@ -12,10 +12,10 @@ import (
 func TestHeadscaleClientCreatePreAuthKeySuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/preauthkey" {
-			t.Fatalf("Caminho inesperado: %s", r.URL.Path)
+			t.Fatalf("Unexpected path: %s", r.URL.Path)
 		}
 		if r.Header.Get("Authorization") != "Bearer test-api-key" {
-			t.Fatalf("Header Authorization incorreto: %s", r.Header.Get("Authorization"))
+			t.Fatalf("Incorrect Authorization header: %s", r.Header.Get("Authorization"))
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -29,15 +29,15 @@ func TestHeadscaleClientCreatePreAuthKeySuccess(t *testing.T) {
 
 	key, err := client.CreatePreAuthKey(ctx, false, 24)
 	if err != nil {
-		t.Fatalf("Esperava sucesso na geração de pre-auth key, obtido erro: %v", err)
+		t.Fatalf("Expected success generating pre-auth key, got error: %v", err)
 	}
 
 	if key != "tskey-auth-1234567890" {
-		t.Errorf("Esperava key 'tskey-auth-1234567890', obtida: '%s'", key)
+		t.Errorf("Expected key 'tskey-auth-1234567890', got: '%s'", key)
 	}
 
 	if client.GetControlURL() != server.URL {
-		t.Errorf("ControlURL esperada %s, obtida: %s", server.URL, client.GetControlURL())
+		t.Errorf("Expected ControlURL %s, got: %s", server.URL, client.GetControlURL())
 	}
 }
 
@@ -52,7 +52,7 @@ func TestHeadscaleClientCreatePreAuthKeyUnauthorized(t *testing.T) {
 
 	_, err := client.CreatePreAuthKey(ctx, false, 24)
 	if err == nil {
-		t.Fatalf("Esperava erro para chave de API não autorizada")
+		t.Fatalf("Expected error for unauthorized API key")
 	}
 }
 
@@ -75,14 +75,14 @@ func TestHeadscaleClientRetryOnServerError(t *testing.T) {
 
 	key, err := client.CreatePreAuthKey(ctx, false, 24)
 	if err != nil {
-		t.Fatalf("Esperava sucesso após retry, obtido erro: %v", err)
+		t.Fatalf("Expected success after retry, got error: %v", err)
 	}
 
 	if key != "tskey-auth-recovered" {
-		t.Errorf("Esperava key 'tskey-auth-recovered', obtida: '%s'", key)
+		t.Errorf("Expected key 'tskey-auth-recovered', got: '%s'", key)
 	}
 
 	if attempts != 2 {
-		t.Errorf("Esperava 2 tentativas HTTP, obtidas: %d", attempts)
+		t.Errorf("Expected 2 HTTP attempts, got: %d", attempts)
 	}
 }

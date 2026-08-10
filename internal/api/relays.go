@@ -15,7 +15,7 @@ import (
 	"github.com/goy-co/coord-server/internal/store"
 )
 
-// RelayCache implementa um cache em memória simples com RWMutex para o endpoint GET /relays.
+// RelayCache implements a simple in-memory cache with RWMutex for the GET /relays endpoint.
 type RelayCache struct {
 	mu        sync.RWMutex
 	cachedAt  time.Time
@@ -25,7 +25,7 @@ type RelayCache struct {
 	hasCached bool
 }
 
-// NewRelayCache instancia um novo RelayCache com a duração de TTL configurada.
+// NewRelayCache instantiates a new RelayCache with the configured TTL duration.
 func NewRelayCache(ttlSeconds int) *RelayCache {
 	if ttlSeconds <= 0 {
 		ttlSeconds = 15
@@ -66,7 +66,7 @@ func (c *RelayCache) Invalidate() {
 	c.hasCached = false
 }
 
-// RelayDTO representa a estrutura JSON exposta para um relay nos pedidos de API.
+// RelayDTO represents the JSON structure exposed for a relay in API requests.
 type RelayDTO struct {
 	NodeID            string          `json:"node_id"`
 	URL               string          `json:"url"`
@@ -94,14 +94,14 @@ func toRelayDTO(r *store.Relay) RelayDTO {
 	}
 }
 
-// GetRelaysResponse representa a resposta do pedido GET /relays.
+// GetRelaysResponse represents the response for GET /relays.
 type GetRelaysResponse struct {
 	Relays      []RelayDTO `json:"relays"`
 	Total       int        `json:"total"`
 	GeneratedAt time.Time  `json:"generated_at"`
 }
 
-// RegisterRelayRequest representa o payload do pedido POST /relays.
+// RegisterRelayRequest represents the payload for POST /relays.
 type RegisterRelayRequest struct {
 	NodeID            string          `json:"node_id"`
 	URL               string          `json:"url"`
@@ -112,14 +112,14 @@ type RegisterRelayRequest struct {
 	Capabilities      []string        `json:"capabilities,omitempty"`
 }
 
-// HeartbeatRelayRequest representa o payload parcial do pedido PUT /relays/{node_id}.
+// HeartbeatRelayRequest represents the partial payload for PUT /relays/{node_id}.
 type HeartbeatRelayRequest struct {
 	Storage *struct {
 		AvailableGB uint64 `json:"available_gb"`
 	} `json:"storage,omitempty"`
 }
 
-// GetRelaysHandler lida com o pedido GET /relays para peer discovery.
+// GetRelaysHandler handles the GET /relays request for peer discovery.
 func GetRelaysHandler(st store.Store, cfg *config.Config, cache *RelayCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sinceStr := r.URL.Query().Get("since")
@@ -129,7 +129,7 @@ func GetRelaysHandler(st store.Store, cfg *config.Config, cache *RelayCache) htt
 		if sinceStr != "" {
 			t, err := time.Parse(time.RFC3339, sinceStr)
 			if err != nil {
-				WriteBadRequest(w, "parâmetro 'since' com formato RFC3339 inválido")
+				WriteBadRequest(w, "'since' parameter must be a valid RFC3339 timestamp")
 				return
 			}
 			sincePtr = &t
@@ -139,13 +139,13 @@ func GetRelaysHandler(st store.Store, cfg *config.Config, cache *RelayCache) htt
 		if minStorageStr != "" {
 			val, err := strconv.ParseUint(minStorageStr, 10, 64)
 			if err != nil {
-				WriteBadRequest(w, "parâmetro 'min_storage_gb' deve ser um inteiro positivo")
+				WriteBadRequest(w, "'min_storage_gb' parameter must be a positive integer")
 				return
 			}
 			minStorageGB = val
 		}
 
-		// Se não houver filtros por query param, tentar servir do cache em memória
+		// If no query parameter filters are applied, try serving from in-memory cache
 		if sincePtr == nil && minStorageGB == 0 && cache != nil {
 			if cachedRelays, total, ok := cache.Get(); ok {
 				w.Header().Set("Content-Type", "application/json")
@@ -167,7 +167,7 @@ func GetRelaysHandler(st store.Store, cfg *config.Config, cache *RelayCache) htt
 			cfg.Registry.MaxRelaysPerResponse,
 		)
 		if err != nil {
-			slog.Error("Erro ao procurar relays ativos", slog.String("error", err.Error()))
+			slog.Error("Error looking up active relays", slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}
@@ -177,7 +177,7 @@ func GetRelaysHandler(st store.Store, cfg *config.Config, cache *RelayCache) htt
 			dtos[i] = toRelayDTO(&relay)
 		}
 
-		// Atualizar cache se não havia filtros aplicados
+		// Update cache if no filters were applied
 		if sincePtr == nil && minStorageGB == 0 && cache != nil {
 			cache.Set(dtos, total)
 		}
@@ -192,42 +192,42 @@ func GetRelaysHandler(st store.Store, cfg *config.Config, cache *RelayCache) htt
 	}
 }
 
-// RegisterRelayHandler lida com o pedido POST /relays.
+// RegisterRelayHandler handles the POST /relays request.
 func RegisterRelayHandler(st store.Store, cfg *config.Config, cache *RelayCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req RegisterRelayRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			WriteBadRequest(w, "formato JSON do pedido inválido")
+			WriteBadRequest(w, "invalid request JSON body")
 			return
 		}
 
 		if req.NodeID == "" {
-			WriteBadRequest(w, "campo node_id obrigatório")
+			WriteBadRequest(w, "node_id field is required")
 			return
 		}
 		if err := ValidateRelayURL(req.URL); err != nil {
-			WriteBadRequest(w, fmt.Sprintf("validação de url falhou: %v", err))
+			WriteBadRequest(w, fmt.Sprintf("url validation failed: %v", err))
 			return
 		}
 		if req.Fingerprint != "" {
 			if err := ValidateFingerprint(req.Fingerprint); err != nil {
-				WriteBadRequest(w, fmt.Sprintf("validação de fingerprint falhou: %v", err))
+				WriteBadRequest(w, fmt.Sprintf("fingerprint validation failed: %v", err))
 				return
 			}
 		}
 		if err := ValidateCapabilities(req.Capabilities); err != nil {
-			WriteBadRequest(w, fmt.Sprintf("validação de capabilities falhou: %v", err))
+			WriteBadRequest(w, fmt.Sprintf("capabilities validation failed: %v", err))
 			return
 		}
 
-		// 1. Verificar se o node_id existe e está ativo na tabela nodes
+		// 1. Verify that node_id exists and is active in the nodes table
 		node, err := st.GetNodeByID(r.Context(), req.NodeID)
 		if err != nil {
 			if errors.Is(err, store.ErrNodeNotFound) {
 				WriteNotFound(w, "node", req.NodeID)
 				return
 			}
-			slog.Error("Erro ao validar existência do nó para registo de relay", slog.String("node_id", req.NodeID), slog.String("error", err.Error()))
+			slog.Error("Error validating node existence for relay registration", slog.String("node_id", req.NodeID), slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}
@@ -252,7 +252,7 @@ func RegisterRelayHandler(st store.Store, cfg *config.Config, cache *RelayCache)
 		}
 
 		if err := st.UpsertRelay(r.Context(), relay); err != nil {
-			slog.Error("Erro no UpsertRelay", slog.String("node_id", req.NodeID), slog.String("error", err.Error()))
+			slog.Error("Error in UpsertRelay", slog.String("node_id", req.NodeID), slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}
@@ -261,7 +261,7 @@ func RegisterRelayHandler(st store.Store, cfg *config.Config, cache *RelayCache)
 			cache.Invalidate()
 		}
 
-		slog.Info("Relay registado/atualizado com sucesso", slog.String("node_id", req.NodeID), slog.String("url", req.URL))
+		slog.Info("Relay registered/updated successfully", slog.String("node_id", req.NodeID), slog.String("url", req.URL))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -269,12 +269,12 @@ func RegisterRelayHandler(st store.Store, cfg *config.Config, cache *RelayCache)
 	}
 }
 
-// HeartbeatRelayHandler lida com o pedido PUT /relays/{node_id}.
+// HeartbeatRelayHandler handles the PUT /relays/{node_id} request.
 func HeartbeatRelayHandler(st store.Store, cache *RelayCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		nodeID := chi.URLParam(r, "node_id")
 		if nodeID == "" {
-			WriteBadRequest(w, "parâmetro node_id em falta no caminho")
+			WriteBadRequest(w, "missing node_id URL parameter")
 			return
 		}
 
@@ -293,7 +293,7 @@ func HeartbeatRelayHandler(st store.Store, cache *RelayCache) http.HandlerFunc {
 				WriteNotFound(w, "relay", nodeID)
 				return
 			}
-			slog.Error("Erro ao atualizar heartbeat do relay", slog.String("node_id", nodeID), slog.String("error", err.Error()))
+			slog.Error("Error updating relay heartbeat", slog.String("node_id", nodeID), slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}
@@ -306,12 +306,12 @@ func HeartbeatRelayHandler(st store.Store, cache *RelayCache) http.HandlerFunc {
 	}
 }
 
-// DeleteRelayHandler lida com o pedido DELETE /relays/{node_id}.
+// DeleteRelayHandler handles the DELETE /relays/{node_id} request.
 func DeleteRelayHandler(st store.Store, cache *RelayCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		nodeID := chi.URLParam(r, "node_id")
 		if nodeID == "" {
-			WriteBadRequest(w, "parâmetro node_id em falta no caminho")
+			WriteBadRequest(w, "missing node_id URL parameter")
 			return
 		}
 
@@ -320,7 +320,7 @@ func DeleteRelayHandler(st store.Store, cache *RelayCache) http.HandlerFunc {
 				WriteNotFound(w, "relay", nodeID)
 				return
 			}
-			slog.Error("Erro ao eliminar relay", slog.String("node_id", nodeID), slog.String("error", err.Error()))
+			slog.Error("Error deleting relay", slog.String("node_id", nodeID), slog.String("error", err.Error()))
 			WriteInternalServerError(w)
 			return
 		}
@@ -329,7 +329,7 @@ func DeleteRelayHandler(st store.Store, cache *RelayCache) http.HandlerFunc {
 			cache.Invalidate()
 		}
 
-		slog.Info("Relay removido do registry com sucesso", slog.String("node_id", nodeID))
+		slog.Info("Relay removed from registry successfully", slog.String("node_id", nodeID))
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

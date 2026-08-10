@@ -10,7 +10,7 @@ import (
 	"github.com/goy-co/coord-server/internal/store"
 )
 
-// mockStore implementa store.Store para testes de background jobs.
+// mockStore implements store.Store for background jobs tests.
 type mockStore struct {
 	mu sync.Mutex
 
@@ -87,15 +87,15 @@ func TestRunnerStop(t *testing.T) {
 		close(done)
 	}()
 
-	// Dar tempo para o goroutine iniciar e executar refreshGauges inicial
+	// Allow goroutine to start and execute initial refreshGauges
 	time.Sleep(50 * time.Millisecond)
 	r.Stop()
 
 	select {
 	case <-done:
-		// OK: o runner terminou corretamente
+		// OK: runner completed correctly
 	case <-time.After(2 * time.Second):
-		t.Fatal("Runner não terminou após Stop() em 2 segundos")
+		t.Fatal("Runner did not stop within 2 seconds after Stop()")
 	}
 }
 
@@ -112,13 +112,13 @@ func TestRunnerContextCancel(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	cancel() // cancelar contexto em vez de Stop
+	cancel() // cancel context instead of calling Stop
 
 	select {
 	case <-done:
 		// OK
 	case <-time.After(2 * time.Second):
-		t.Fatal("Runner não terminou após cancelar ctx em 2 segundos")
+		t.Fatal("Runner did not stop within 2 seconds after context cancellation")
 	}
 }
 
@@ -129,7 +129,7 @@ func TestRunnerInitialGaugeRefresh(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	r.Start(ctx) // bloqueia até ctx expirar
+	r.Start(ctx) // blocks until ctx expires
 
 	ms.mu.Lock()
 	nodeCalls := ms.nodeCountsCalls
@@ -137,10 +137,10 @@ func TestRunnerInitialGaugeRefresh(t *testing.T) {
 	ms.mu.Unlock()
 
 	if nodeCalls == 0 {
-		t.Error("GetNodeCountsByStatus não foi chamado durante o arranque do Runner")
+		t.Error("GetNodeCountsByStatus was not called during Runner startup")
 	}
 	if relayCalls == 0 {
-		t.Error("CountActiveRelays não foi chamado durante o arranque do Runner")
+		t.Error("CountActiveRelays was not called during Runner startup")
 	}
 }
 
@@ -148,7 +148,7 @@ func TestRunnerStopIdempotent(t *testing.T) {
 	ms := &mockStore{}
 	r := jobs.NewRunner(ms, 60, 300, 300, 48)
 
-	// Stop antes de Start não deve panic
+	// Calling Stop before Start should not panic
 	r.Stop()
-	r.Stop() // idempotente
+	r.Stop() // idempotent
 }

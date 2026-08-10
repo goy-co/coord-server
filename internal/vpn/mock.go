@@ -2,7 +2,7 @@ package vpn
 
 import "context"
 
-// NoopVPNProvider é a implementação nula utilizada quando a integração VPN está desativada.
+// NoopVPNProvider is a no-op implementation used when VPN integration is disabled.
 type NoopVPNProvider struct{}
 
 func NewNoopVPNProvider() *NoopVPNProvider {
@@ -30,7 +30,7 @@ func (p *NoopVPNProvider) GetControlURL() string {
 	return ""
 }
 
-// MockVPNProvider é a implementação configurável utilizada em testes unitários e de integração.
+// MockVPNProvider is a configurable mock implementation used in unit and integration tests.
 type MockVPNProvider struct {
 	KeyToReturn        string
 	ErrToReturn        error

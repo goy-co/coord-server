@@ -25,7 +25,7 @@ func TestNodeEndpoints(t *testing.T) {
 	ctx := context.Background()
 
 	if err := st.Init(ctx); err != nil {
-		t.Fatalf("Falha ao inicializar SQLiteStore: %v", err)
+		t.Fatalf("Failed to initialize SQLiteStore: %v", err)
 	}
 	defer st.Close()
 
@@ -38,7 +38,7 @@ func TestNodeEndpoints(t *testing.T) {
 	var registeredNodeID string
 	authKey := "gc_12345678901234567890"
 
-	// 0. Request sem Authorization Header -> 401 Unauthorized
+	// 0. Request without Authorization Header -> 401 Unauthorized
 	t.Run("Register Node Unauthorized Missing Header", func(t *testing.T) {
 		body := api.RegisterNodeRequest{
 			AuthKey: authKey,
@@ -53,11 +53,11 @@ func TestNodeEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("Esperava status 401 para pedido sem header, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 401 for request without header, got: %d", rec.Code)
 		}
 	})
 
-	// 1. POST /v1/nodes/register com Auth Key Inválida -> 400 Bad Request
+	// 1. POST /v1/nodes/register with Invalid Auth Key -> 400 Bad Request
 	t.Run("Register Invalid Auth Key", func(t *testing.T) {
 		body := api.RegisterNodeRequest{
 			AuthKey: "short_key",
@@ -73,17 +73,17 @@ func TestNodeEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("Esperava status 400, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 400, got: %d", rec.Code)
 		}
 
 		var errResp api.ErrorResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &errResp)
 		if errResp.Error != "invalid request" {
-			t.Errorf("Resposta de erro inesperada: %+v", errResp)
+			t.Errorf("Unexpected error response: %+v", errResp)
 		}
 	})
 
-	// 2. POST /v1/nodes/register com Sucesso -> 201 Created
+	// 2. POST /v1/nodes/register Success -> 201 Created
 	t.Run("Register Valid Node", func(t *testing.T) {
 		body := api.RegisterNodeRequest{
 			AuthKey: authKey,
@@ -105,26 +105,26 @@ func TestNodeEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusCreated {
-			t.Fatalf("Esperava status 201, obtido: %d (corpo: %s)", rec.Code, rec.Body.String())
+			t.Fatalf("Expected status 201, got: %d (body: %s)", rec.Code, rec.Body.String())
 		}
 
 		var resp api.RegisterNodeResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("Falha ao deserializar JSON: %v", err)
+			t.Fatalf("Failed to deserialize JSON: %v", err)
 		}
 
 		if resp.NodeID == "" || resp.Name != "my-test-node" || resp.MeshURL != "100.64.0.5:8443" {
-			t.Errorf("Campos de resposta incorretos: %+v", resp)
+			t.Errorf("Incorrect response fields: %+v", resp)
 		}
 
 		if resp.RegistryURL != "http://coord.test:8080" {
-			t.Errorf("RegistryURL esperada 'http://coord.test:8080', obtida: '%s'", resp.RegistryURL)
+			t.Errorf("Expected RegistryURL 'http://coord.test:8080', got: '%s'", resp.RegistryURL)
 		}
 
 		registeredNodeID = resp.NodeID
 	})
 
-	// 3. POST /v1/nodes/register Idempotente (mesma Auth Key) -> 200 OK
+	// 3. POST /v1/nodes/register Idempotent (same Auth Key) -> 200 OK
 	t.Run("Register Idempotent Node", func(t *testing.T) {
 		body := api.RegisterNodeRequest{
 			AuthKey: authKey,
@@ -140,18 +140,18 @@ func TestNodeEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("Esperava status 200 para registo idempotente, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 200 for idempotent registration, got: %d", rec.Code)
 		}
 
 		var resp api.RegisterNodeResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 
 		if resp.NodeID != registeredNodeID {
-			t.Errorf("NodeID deve corresponder ao registo prévio (%s), obtido: %s", registeredNodeID, resp.NodeID)
+			t.Errorf("NodeID should match previous registration (%s), got: %s", registeredNodeID, resp.NodeID)
 		}
 	})
 
-	// 4. GET /v1/nodes/{id} com Sucesso -> 200 OK
+	// 4. GET /v1/nodes/{id} Success -> 200 OK
 	t.Run("Get Node Success", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/v1/nodes/"+registeredNodeID, nil)
 		req.Header.Set("Authorization", "Bearer valid-test-key")
@@ -160,16 +160,16 @@ func TestNodeEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("Esperava status 200, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 200, got: %d", rec.Code)
 		}
 
 		var node store.Node
 		if err := json.Unmarshal(rec.Body.Bytes(), &node); err != nil {
-			t.Fatalf("Falha ao deserializar nó: %v", err)
+			t.Fatalf("Failed to deserialize node: %v", err)
 		}
 
 		if node.ID != registeredNodeID || node.Name != "my-test-node" {
-			t.Errorf("Dados de nó incorretos: %+v", node)
+			t.Errorf("Incorrect node data: %+v", node)
 		}
 	})
 
@@ -182,13 +182,13 @@ func TestNodeEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNotFound {
-			t.Fatalf("Esperava status 404, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 404, got: %d", rec.Code)
 		}
 
 		var errResp api.ErrorResponse
 		_ = json.Unmarshal(rec.Body.Bytes(), &errResp)
 		if errResp.Error != "not found" || errResp.ID != "goy-node-nonexistent" {
-			t.Errorf("Resposta de erro 404 incorreta: %+v", errResp)
+			t.Errorf("Incorrect 404 error response: %+v", errResp)
 		}
 	})
 
@@ -201,7 +201,7 @@ func TestNodeEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNoContent {
-			t.Fatalf("Esperava status 204, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 204, got: %d", rec.Code)
 		}
 
 		getReq := httptest.NewRequest("GET", "/v1/nodes/"+registeredNodeID, nil)
@@ -211,7 +211,7 @@ func TestNodeEndpoints(t *testing.T) {
 		router.ServeHTTP(getRec, getReq)
 
 		if getRec.Code != http.StatusNotFound {
-			t.Fatalf("Esperava status 404 após soft delete, obtido: %d", getRec.Code)
+			t.Fatalf("Expected status 404 after soft delete, got: %d", getRec.Code)
 		}
 	})
 
@@ -224,7 +224,7 @@ func TestNodeEndpoints(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNotFound {
-			t.Fatalf("Esperava status 404, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 404, got: %d", rec.Code)
 		}
 	})
 }
@@ -237,7 +237,7 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 	ctx := context.Background()
 
 	if err := st.Init(ctx); err != nil {
-		t.Fatalf("Falha ao inicializar SQLiteStore: %v", err)
+		t.Fatalf("Failed to initialize SQLiteStore: %v", err)
 	}
 	defer st.Close()
 
@@ -266,19 +266,19 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusCreated {
-			t.Fatalf("Esperava status 201, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 201, got: %d", rec.Code)
 		}
 
 		var resp api.RegisterNodeResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("Falha ao descodificar resposta: %v", err)
+			t.Fatalf("Failed to decode response: %v", err)
 		}
 
 		if resp.VPNConfig.AuthKey != "tskey-auth-mock-123456" {
-			t.Errorf("Esperava vpn_config.auth_key 'tskey-auth-mock-123456', obtida: '%s'", resp.VPNConfig.AuthKey)
+			t.Errorf("Expected vpn_config.auth_key 'tskey-auth-mock-123456', got: '%s'", resp.VPNConfig.AuthKey)
 		}
 		if resp.VPNConfig.ControlURL != "https://vpn.goy.test" {
-			t.Errorf("Esperava vpn_config.control_url 'https://vpn.goy.test', obtida: '%s'", resp.VPNConfig.ControlURL)
+			t.Errorf("Expected vpn_config.control_url 'https://vpn.goy.test', got: '%s'", resp.VPNConfig.ControlURL)
 		}
 	})
 
@@ -307,16 +307,16 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusCreated {
-			t.Fatalf("Esperava status 201 mesmo com falha no VPN, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 201 even with VPN failure, got: %d", rec.Code)
 		}
 
 		var resp api.RegisterNodeResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("Falha ao descodificar resposta: %v", err)
+			t.Fatalf("Failed to decode response: %v", err)
 		}
 
 		if resp.VPNConfig.AuthKey != "" {
-			t.Errorf("Esperava vpn_config.auth_key vazia em fallback, obtida: '%s'", resp.VPNConfig.AuthKey)
+			t.Errorf("Expected empty vpn_config.auth_key on fallback, got: '%s'", resp.VPNConfig.AuthKey)
 		}
 	})
 
@@ -335,16 +335,16 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("Esperava status 200, obtido: %d", rec.Code)
+			t.Fatalf("Expected status 200, got: %d", rec.Code)
 		}
 
 		var status vpn.VPNStatusResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
-			t.Fatalf("Falha ao descodificar resposta de status VPN: %v", err)
+			t.Fatalf("Failed to decode VPN status response: %v", err)
 		}
 
 		if !status.VPNEnabled || !status.HeadscaleReachable || status.RegisteredMachines != 3 {
-			t.Errorf("Dados de status VPN inesperados: %+v", status)
+			t.Errorf("Unexpected VPN status data: %+v", status)
 		}
 	})
 }

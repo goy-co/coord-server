@@ -15,7 +15,7 @@ const (
 	DefaultHMACSecret = "coord-server-default-hmac-secret"
 )
 
-// ValidateAuthKeyFormat verifica se a auth key cumpre o formato esperado (prefixo 'gc_', comprimento >= 20).
+// ValidateAuthKeyFormat verifies that the auth key meets the expected format ('gc_' prefix, length >= 20).
 func ValidateAuthKeyFormat(key string) bool {
 	key = strings.TrimSpace(key)
 	if len(key) < MinAuthKeyLength {
@@ -27,7 +27,7 @@ func ValidateAuthKeyFormat(key string) bool {
 	return true
 }
 
-// HashAuthKey computa o hash HMAC-SHA256 da auth key utilizando o secret configurado.
+// HashAuthKey computes the HMAC-SHA256 hash of the auth key using the configured secret.
 func HashAuthKey(key string, secret string) string {
 	if secret == "" {
 		secret = DefaultHMACSecret
@@ -38,11 +38,11 @@ func HashAuthKey(key string, secret string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// GenerateNodeID gera um identificador único de nó no formato "goy-node-{random_hex_8}".
+// GenerateNodeID generates a unique node identifier in the format "goy-node-{random_hex_8}".
 func GenerateNodeID() string {
 	bytes := make([]byte, 8)
 	if _, err := rand.Read(bytes); err != nil {
-		// Fallback estático de emergência se a fonte entrópica falhar
+		// Emergency fallback if entropy source fails
 		return fmt.Sprintf("goy-node-%x", hex.EncodeToString([]byte("fallback")))
 	}
 	return fmt.Sprintf("goy-node-%s", hex.EncodeToString(bytes))

@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// ErrorResponse representa o formato padronizado de erro retornado pela API.
+// ErrorResponse represents the standardized error format returned by the API.
 type ErrorResponse struct {
 	Error    string `json:"error"`
 	Details  string `json:"details,omitempty"`
@@ -15,14 +15,14 @@ type ErrorResponse struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
-// WriteJSONError envia uma resposta HTTP de erro formatada em JSON.
+// WriteJSONError sends a JSON-formatted HTTP error response.
 func WriteJSONError(w http.ResponseWriter, statusCode int, resp ErrorResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// WriteBadRequest envia um erro 400 Bad Request.
+// WriteBadRequest sends a 400 Bad Request error.
 func WriteBadRequest(w http.ResponseWriter, details string) {
 	WriteJSONError(w, http.StatusBadRequest, ErrorResponse{
 		Error:   "invalid request",
@@ -30,7 +30,7 @@ func WriteBadRequest(w http.ResponseWriter, details string) {
 	})
 }
 
-// WriteUnauthorized envia um erro 401 Unauthorized.
+// WriteUnauthorized sends a 401 Unauthorized error.
 func WriteUnauthorized(w http.ResponseWriter, details string) {
 	if details == "" {
 		details = "valid API key required"
@@ -41,7 +41,7 @@ func WriteUnauthorized(w http.ResponseWriter, details string) {
 	})
 }
 
-// WriteNotFound envia um erro 404 Not Found.
+// WriteNotFound sends a 404 Not Found error.
 func WriteNotFound(w http.ResponseWriter, resource string, id string) {
 	WriteJSONError(w, http.StatusNotFound, ErrorResponse{
 		Error:    "not found",
@@ -50,7 +50,7 @@ func WriteNotFound(w http.ResponseWriter, resource string, id string) {
 	})
 }
 
-// WriteTooManyRequests envia um erro 429 Too Many Requests com o header Retry-After.
+// WriteTooManyRequests sends a 429 Too Many Requests error with the Retry-After header.
 func WriteTooManyRequests(w http.ResponseWriter, retryAfterSeconds int) {
 	if retryAfterSeconds <= 0 {
 		retryAfterSeconds = 1
@@ -58,18 +58,18 @@ func WriteTooManyRequests(w http.ResponseWriter, retryAfterSeconds int) {
 	w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
 	WriteJSONError(w, http.StatusTooManyRequests, ErrorResponse{
 		Error:  "rate limit exceeded",
-		Reason: "limite de pedidos HTTP excedido",
+		Reason: "HTTP request limit exceeded",
 	})
 }
 
-// WriteInternalServerError envia um erro 500 Internal Server Error (sem expor detalhes internos).
+// WriteInternalServerError sends a 500 Internal Server Error (without exposing internal details).
 func WriteInternalServerError(w http.ResponseWriter) {
 	WriteJSONError(w, http.StatusInternalServerError, ErrorResponse{
 		Error: "internal server error",
 	})
 }
 
-// WriteServiceUnavailable envia um erro 503 Service Unavailable.
+// WriteServiceUnavailable sends a 503 Service Unavailable error.
 func WriteServiceUnavailable(w http.ResponseWriter, reason string) {
 	WriteJSONError(w, http.StatusServiceUnavailable, ErrorResponse{
 		Error:  "service unavailable",

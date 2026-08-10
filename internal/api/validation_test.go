@@ -24,13 +24,13 @@ func TestValidateRelayURL(t *testing.T) {
 
 	for _, u := range validURLs {
 		if err := api.ValidateRelayURL(u); err != nil {
-			t.Errorf("Esperava URL válida para '%s', obtido erro: %v", u, err)
+			t.Errorf("Expected valid URL for '%s', got error: %v", u, err)
 		}
 	}
 
 	for _, u := range invalidURLs {
 		if err := api.ValidateRelayURL(u); err == nil {
-			t.Errorf("Esperava erro para URL inválida '%s'", u)
+			t.Errorf("Expected error for invalid URL '%s'", u)
 		}
 	}
 }
@@ -38,7 +38,7 @@ func TestValidateRelayURL(t *testing.T) {
 func TestValidateFingerprint(t *testing.T) {
 	validFP := "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 	if err := api.ValidateFingerprint(validFP); err != nil {
-		t.Errorf("Esperava fingerprint válida, obtido erro: %v", err)
+		t.Errorf("Expected valid fingerprint, got error: %v", err)
 	}
 
 	invalidFPs := []string{
@@ -49,7 +49,7 @@ func TestValidateFingerprint(t *testing.T) {
 
 	for _, fp := range invalidFPs {
 		if err := api.ValidateFingerprint(fp); err == nil {
-			t.Errorf("Esperava erro para fingerprint inválida '%s'", fp)
+			t.Errorf("Expected error for invalid fingerprint '%s'", fp)
 		}
 	}
 }
@@ -57,7 +57,7 @@ func TestValidateFingerprint(t *testing.T) {
 func TestValidateCapabilities(t *testing.T) {
 	validCaps := []string{"nip09", "nip40", "backfill"}
 	if err := api.ValidateCapabilities(validCaps); err != nil {
-		t.Errorf("Esperava capacidades válidas, obtido erro: %v", err)
+		t.Errorf("Expected valid capabilities, got error: %v", err)
 	}
 
 	invalidCapsList := [][]string{
@@ -67,7 +67,7 @@ func TestValidateCapabilities(t *testing.T) {
 
 	for _, caps := range invalidCapsList {
 		if err := api.ValidateCapabilities(caps); err == nil {
-			t.Errorf("Esperava erro de validação para lista de capacidades: %v", caps)
+			t.Errorf("Expected validation error for capabilities list: %v", caps)
 		}
 	}
 }

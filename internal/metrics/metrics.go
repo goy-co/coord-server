@@ -11,7 +11,7 @@ var (
 	HTTPRequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "coord_http_requests_total",
-			Help: "Total de pedidos HTTP processados por método, caminho e código de estado.",
+			Help: "Total HTTP requests processed by method, path, and status code.",
 		},
 		[]string{"method", "path", "status"},
 	)
@@ -19,7 +19,7 @@ var (
 	HTTPRequestDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "coord_http_request_duration_seconds",
-			Help:    "Duração do processamento de pedidos HTTP em segundos.",
+			Help:    "HTTP request processing duration in seconds.",
 			Buckets: prometheus.DefBuckets,
 		},
 		[]string{"method", "path"},
@@ -28,7 +28,7 @@ var (
 	NodesTotal = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "coord_nodes_total",
-			Help: "Número total de nós registados por estado.",
+			Help: "Total number of registered nodes by status.",
 		},
 		[]string{"status"},
 	)
@@ -36,49 +36,49 @@ var (
 	RelaysActiveTotal = promauto.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "coord_relays_active_total",
-			Help: "Número total de relays em estado ativo no registry.",
+			Help: "Total number of active relays in the registry.",
 		},
 	)
 
 	VPNKeysGeneratedTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "coord_vpn_keys_generated_total",
-			Help: "Total de pre-auth keys geradas com sucesso no Headscale.",
+			Help: "Total pre-auth keys successfully generated in Headscale.",
 		},
 	)
 
 	VPNErrorsTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "coord_vpn_errors_total",
-			Help: "Total de erros de comunicação com a API do Headscale.",
+			Help: "Total API communication errors with Headscale.",
 		},
 	)
 
 	AuthFailuresTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "coord_auth_failures_total",
-			Help: "Total de tentativas de autenticação falhadas na API.",
+			Help: "Total failed API authentication attempts.",
 		},
 	)
 
 	RateLimitRejectedTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "coord_ratelimit_rejected_total",
-			Help: "Total de pedidos HTTP rejeitados por exceder o rate limit.",
+			Help: "Total HTTP requests rejected for exceeding the rate limit.",
 		},
 	)
 
 	DBQueryDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "coord_db_query_duration_seconds",
-			Help:    "Duração das queries e operações na base de dados SQLite.",
+			Help:    "Duration of SQLite database queries and operations in seconds.",
 			Buckets: []float64{0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0},
 		},
 		[]string{"operation"},
 	)
 )
 
-// NormalizePath normaliza o caminho HTTP para evitar a explosão de cardinalidade no Prometheus.
+// NormalizePath normalizes HTTP paths to prevent cardinality explosion in Prometheus.
 func NormalizePath(path string) string {
 	if path == "" || path == "/" {
 		return "/"
