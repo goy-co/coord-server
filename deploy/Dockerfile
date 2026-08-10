@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     ./cmd/server
 
 # Stage 2: Runtime
-FROM alpine:3.20
+FROM alpine:3.24
 
 LABEL org.opencontainers.image.title="coord-server" \
       org.opencontainers.image.description="Coordination server and registry for the Goy mesh network" \
