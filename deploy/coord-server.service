@@ -1,0 +1,24 @@
+[Unit]
+Description=Goy Mesh Network Coordination Server
+After=network.target
+
+[Service]
+Type=simple
+User=coord
+Group=coord
+WorkingDirectory=/var/lib/coord-server
+ExecStart=/usr/local/bin/coord-server --config /etc/coord-server/config.toml
+Restart=on-failure
+RestartSec=5s
+
+# Restrições de segurança
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Variáveis de ambiente (podem ser substituídas via /etc/default/coord-server)
+EnvironmentFile=-/etc/default/coord-server
+
+[Install]
+WantedBy=multi-user.target
