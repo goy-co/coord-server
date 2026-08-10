@@ -209,9 +209,11 @@ func RegisterRelayHandler(st store.Store, cfg *config.Config, cache *RelayCache)
 			WriteBadRequest(w, fmt.Sprintf("validação de url falhou: %v", err))
 			return
 		}
-		if err := ValidateFingerprint(req.Fingerprint); err != nil {
-			WriteBadRequest(w, fmt.Sprintf("validação de fingerprint falhou: %v", err))
-			return
+		if req.Fingerprint != "" {
+			if err := ValidateFingerprint(req.Fingerprint); err != nil {
+				WriteBadRequest(w, fmt.Sprintf("validação de fingerprint falhou: %v", err))
+				return
+			}
 		}
 		if err := ValidateCapabilities(req.Capabilities); err != nil {
 			WriteBadRequest(w, fmt.Sprintf("validação de capabilities falhou: %v", err))

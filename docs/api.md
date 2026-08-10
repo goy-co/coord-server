@@ -1,21 +1,36 @@
-# API Documentation - `coord-server`
+# API Documentation — `coord-server` v0.1.0
 
-## Autenticação & Segurança
+## Overview
 
-Quando `auth.require_auth = true` (por defeito), todos os pedidos aos endpoints protegidos exigem a passagem do header `Authorization: Bearer <key>`. A chave de API do administrador é definida através da variável de ambiente `COORD_ADMIN_API_KEY`.
+Base URL: `http://<host>:8080` (configurable via `server.listen`)
 
-### Erros de Autenticação & Rate Limiting
+All responses are `application/json`. Timestamps are RFC3339 UTC.
 
-**`401 Unauthorized` (Token em falta ou inválido):**
+---
+
+## Authentication
+
+When `auth.require_auth = true` (default), protected endpoints require:
+
+```http
+Authorization: Bearer <COORD_ADMIN_API_KEY>
+```
+
+The API key is configured exclusively via the `COORD_ADMIN_API_KEY` environment variable (never in `config.toml`).
+
+**Public endpoints** (no auth required): `GET /health`, `GET /info`, `GET /metrics`
+
+### Auth Error Responses
+
+**`401 Unauthorized`** — missing or invalid token:
 ```json
 {
   "error": "unauthorized",
-  "details": "valid API key required"
+  "details": "header Authorization em falta"
 }
 ```
 
-**`429 Too Many Requests` (Limite de pedidos excedido):**
-Headers retornados: `Retry-After: N` (tempo de espera recomendado em segundos)
+**`429 Too Many Requests`** — IP rate limit exceeded (header `Retry-After: N` included):
 ```json
 {
   "error": "rate limit exceeded",
@@ -25,17 +40,13 @@ Headers retornados: `Retry-After: N` (tempo de espera recomendado em segundos)
 
 ---
 
-## Base Endpoints (Isentos de Autenticação)
+## Public Endpoints
 
-### Health Check
+### `GET /health`
 
-```http
-GET /health
-```
+Server health check and database connectivity. Exempt from auth and rate limiting. Suitable for load balancer and orchestrator probes.
 
-Retorna o estado de saúde do servidor e conectividade com a base de dados SQLite. Isento de autenticação e rate limit.
-
-**Resposta de Sucesso (`200 OK`):**
+**Response `200 OK`:**
 ```json
 {
   "status": "ok",
@@ -43,7 +54,7 @@ Retorna o estado de saúde do servidor e conectividade com a base de dados SQLit
 }
 ```
 
-**Resposta de Erro (`503 Service Unavailable`):**
+**Response `503 Service Unavailable`** — database unreachable:
 ```json
 {
   "status": "degraded",
@@ -54,38 +65,67 @@ Retorna o estado de saúde do servidor e conectividade com a base de dados SQLit
 
 ---
 
-### Instância & Info
+### `GET /info`
 
-```http
-GET /info
-```
+Runtime metadata. Exempt from auth and rate limiting.
 
-Retorna detalhes de execução, uptime e caminhos de configuração. Isento de autenticação e rate limit.
-
-**Resposta de Sucesso (`200 OK`):**
+**Response `200 OK`:**
 ```json
 {
   "version": "0.1.0",
-  "uptime_seconds": 120,
+  "uptime_seconds": 3721,
   "database_path": "data/coord-server.db",
   "listen_address": "0.0.0.0:8080",
-  "vpn_integration_enabled": false
+  "vpn_integration_enabled": true
 }
 ```
 
 ---
 
-## Nodes API (`/v1/nodes` - Protegida)
+### `GET /metrics`
 
-### Register Node (Onboarding)
+Prometheus metrics in text exposition format. Exempt from auth and rate limiting.
 
+**Response `200 OK`** (text/plain; version=0.0.4):
+```
+# HELP coord_http_requests_total Total de pedidos HTTP processados por método, caminho e código de estado.
+# TYPE coord_http_requests_total counter
+coord_http_requests_total{method="GET",path="/health",status="200"} 42
+coord_http_requests_total{method="POST",path="/v1/nodes/register",status="201"} 5
+...
+```
+
+Available metrics:
+
+| Metric | Type | Labels |
+|---|---|---|
+| `coord_http_requests_total` | Counter | `method`, `path`, `status` |
+| `coord_http_request_duration_seconds` | Histogram | `method`, `path` |
+| `coord_nodes_total` | Gauge | `status` |
+| `coord_relays_active_total` | Gauge | — |
+| `coord_vpn_keys_generated_total` | Counter | — |
+| `coord_vpn_errors_total` | Counter | — |
+| `coord_auth_failures_total` | Counter | — |
+| `coord_ratelimit_rejected_total` | Counter | — |
+| `coord_db_query_duration_seconds` | Histogram | `operation` |
+
+> **Note:** Paths containing node/relay IDs are normalised to `:id` to prevent cardinality explosion (e.g. `/v1/nodes/goy-node-abc123` → `/v1/nodes/:id`).
+
+---
+
+## Nodes API — `/v1/nodes` (Auth Required)
+
+### `POST /v1/nodes/register`
+
+Register a new Goy Node (onboarding). If a node with the same `auth_key` already exists, the registration is idempotent and returns `200 OK`.
+
+**Request:**
 ```http
 POST /v1/nodes/register
 Authorization: Bearer <COORD_ADMIN_API_KEY>
 Content-Type: application/json
 ```
 
-**Request Body:**
 ```json
 {
   "auth_key": "gc_12345678901234567890",
@@ -98,7 +138,15 @@ Content-Type: application/json
 }
 ```
 
-**Resposta de Sucesso (`201 Created` / `200 OK` para registo idempotente):**
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `auth_key` | string | ✅ | Node auth key (format: `gc_<hex>`, min 20 chars) |
+| `name` | string | No | Human-readable node name (max 64 chars) |
+| `storage.reserved_gb` | uint | No | Storage reserved for Goy (GB) |
+| `storage.available_gb` | uint | No | Currently available storage (GB) |
+| `mesh_url` | string | No | Node's mesh endpoint (host:port) |
+
+**Response `201 Created`** — new registration:
 ```json
 {
   "node_id": "goy-node-63898b5aaee9bb45",
@@ -108,23 +156,38 @@ Content-Type: application/json
     "auth_key": "tskey-auth-1234567890abcdef",
     "control_url": "https://vpn.goyco.xyz"
   },
-  "registry_url": "http://localhost:8080",
+  "registry_url": "http://coord-server:8080",
   "created_at": "2026-08-10T15:59:01Z"
 }
 ```
 
-> **Nota:** Se a integração VPN estiver desativada (`vpn.enabled = false`) ou se o Headscale estiver temporariamente indisponível, a chave `vpn_config.auth_key` é retornada vazia (`""`) e o registo do nó sucede normalmente (graceful degradation).
+**Response `200 OK`** — idempotent re-registration (same `auth_key`):
+Same body as `201` but with original `created_at`.
+
+> **VPN Graceful Degradation:** If `vpn.enabled = false` or Headscale is unreachable, `vpn_config.auth_key` is returned as `""` and registration still succeeds. The node can be manually joined to the VPN later.
+
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `400 Bad Request` | Missing `auth_key`, key too short, or malformed JSON |
+| `401 Unauthorized` | Missing or invalid `Authorization` header |
+| `429 Too Many Requests` | IP rate limit exceeded |
+| `500 Internal Server Error` | Database write failure |
 
 ---
 
-### Get Node Details
+### `GET /v1/nodes/{id}`
 
+Retrieve full details for a registered node.
+
+**Request:**
 ```http
-GET /v1/nodes/{id}
+GET /v1/nodes/goy-node-63898b5aaee9bb45
 Authorization: Bearer <COORD_ADMIN_API_KEY>
 ```
 
-**Resposta de Sucesso (`200 OK`):**
+**Response `200 OK`:**
 ```json
 {
   "id": "goy-node-63898b5aaee9bb45",
@@ -136,33 +199,57 @@ Authorization: Bearer <COORD_ADMIN_API_KEY>
   "mesh_url": "100.80.1.5:8443",
   "status": "active",
   "created_at": "2026-08-10T15:59:01Z",
-  "updated_at": "2026-08-10T15:59:01Z"
+  "updated_at": "2026-08-10T16:02:09Z"
 }
 ```
 
+`status` values: `active` | `inactive` | `deleted`
+
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `401 Unauthorized` | Missing or invalid token |
+| `404 Not Found` | Node ID does not exist |
+| `429 Too Many Requests` | IP rate limit exceeded |
+
 ---
 
-### Delete Node (Soft Delete)
+### `DELETE /v1/nodes/{id}`
 
+Soft-delete a node (sets `status = "deleted"`). The node's relay entry is also removed from the registry.
+
+**Request:**
 ```http
-DELETE /v1/nodes/{id}
+DELETE /v1/nodes/goy-node-63898b5aaee9bb45
 Authorization: Bearer <COORD_ADMIN_API_KEY>
 ```
 
-**Resposta de Sucesso (`204 No Content`)**
+**Response `204 No Content`** — success, no body.
+
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `401 Unauthorized` | Missing or invalid token |
+| `404 Not Found` | Node ID does not exist |
+| `429 Too Many Requests` | IP rate limit exceeded |
 
 ---
 
-## VPN Diagnostics API (`/v1/vpn` - Protegida)
+## VPN Diagnostics API — `/v1/vpn` (Auth Required)
 
-### Get VPN Status
+### `GET /v1/vpn/status`
 
+Diagnostic endpoint for Headscale integration status.
+
+**Request:**
 ```http
 GET /v1/vpn/status
 Authorization: Bearer <COORD_ADMIN_API_KEY>
 ```
 
-**Resposta de Sucesso (`200 OK`):**
+**Response `200 OK`** — integration enabled and reachable:
 ```json
 {
   "vpn_enabled": true,
@@ -172,22 +259,60 @@ Authorization: Bearer <COORD_ADMIN_API_KEY>
 }
 ```
 
+**Response `200 OK`** — integration disabled:
+```json
+{
+  "vpn_enabled": false,
+  "headscale_reachable": false,
+  "headscale_user": "",
+  "registered_machines": 0
+}
+```
+
+**Response `200 OK`** — enabled but Headscale unreachable:
+```json
+{
+  "vpn_enabled": true,
+  "headscale_reachable": false,
+  "headscale_user": "goy-nodes",
+  "registered_machines": 0
+}
+```
+
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `401 Unauthorized` | Missing or invalid token |
+| `429 Too Many Requests` | IP rate limit exceeded |
+
 ---
 
-## Relays API (`/relays` - Protegida)
+## Relays API — `/relays` (Auth Required)
 
-### Peer Discovery (Get Active Relays)
+### `GET /relays`
 
+Discover active relay peers. Results are cached for `registry.discovery_cache_ttl_seconds` (default 15s).
+
+**Request:**
 ```http
 GET /relays
 Authorization: Bearer <COORD_ADMIN_API_KEY>
 ```
 
-**Query Parameters (Opcionais):**
-- `since`: timestamp RFC3339 (ex: `2026-08-10T12:00:00Z`) para descoberta incremental.
-- `min_storage_gb`: número inteiro positivo para filtrar por capacidade mínima.
+**Query Parameters (optional):**
 
-**Resposta de Sucesso (`200 OK`):**
+| Parameter | Type | Description |
+|---|---|---|
+| `since` | RFC3339 timestamp | Return only relays seen after this time (incremental sync) |
+| `min_storage_gb` | uint | Filter by minimum available storage (GB) |
+
+**Example:**
+```
+GET /relays?since=2026-08-10T12:00:00Z&min_storage_gb=50
+```
+
+**Response `200 OK`:**
 ```json
 {
   "relays": [
@@ -210,17 +335,30 @@ Authorization: Bearer <COORD_ADMIN_API_KEY>
 }
 ```
 
+> **Stale relay filtering:** Relays that haven't sent a heartbeat within `registry.relay_ttl_seconds` (default 300s) are excluded from results and eventually cleaned up by the background job.
+
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `400 Bad Request` | Malformed `since` timestamp or `min_storage_gb` value |
+| `401 Unauthorized` | Missing or invalid token |
+| `429 Too Many Requests` | IP rate limit exceeded |
+| `500 Internal Server Error` | Database read failure |
+
 ---
 
-### Register or Update Relay
+### `POST /relays`
 
+Announce this node as an active relay. Idempotent — calling again updates the existing entry.
+
+**Request:**
 ```http
 POST /relays
 Authorization: Bearer <COORD_ADMIN_API_KEY>
 Content-Type: application/json
 ```
 
-**Request Body:**
 ```json
 {
   "node_id": "goy-node-760cada1b87b1d48",
@@ -236,7 +374,18 @@ Content-Type: application/json
 }
 ```
 
-**Resposta de Sucesso (`201 Created`):**
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `node_id` | string | ✅ | Must match an existing registered node |
+| `url` | string | ✅ | WebSocket relay URL (must start with `ws://` or `wss://`) |
+| `fingerprint` | string | No | TLS certificate fingerprint for mTLS TOFU |
+| `storage.reserved_gb` | uint | No | Storage reserved for Goy (GB) |
+| `storage.available_gb` | uint | No | Currently available storage (GB) |
+| `replication_factor` | uint | No | Target replication factor for hosted objects |
+| `version` | string | No | Goy Node software version |
+| `capabilities` | []string | No | Supported NIPs/protocols |
+
+**Response `201 Created`:**
 ```json
 {
   "node_id": "goy-node-760cada1b87b1d48",
@@ -253,17 +402,32 @@ Content-Type: application/json
 }
 ```
 
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `400 Bad Request` | Missing required fields or invalid URL format |
+| `401 Unauthorized` | Missing or invalid token |
+| `404 Not Found` | `node_id` not found in nodes registry |
+| `429 Too Many Requests` | IP rate limit exceeded |
+| `500 Internal Server Error` | Database write failure |
+
 ---
 
-### Relay Heartbeat
+### `PUT /relays/{node_id}`
 
+Relay heartbeat. Updates `last_seen` and optionally refreshes available storage. Should be called every 60–120 seconds by active nodes.
+
+Rate limit for this endpoint is more generous (`rate_limit.heartbeat_rpm`, default 120/min).
+
+**Request:**
 ```http
-PUT /relays/{node_id}
+PUT /relays/goy-node-760cada1b87b1d48
 Authorization: Bearer <COORD_ADMIN_API_KEY>
 Content-Type: application/json
 ```
 
-**Request Body (Parcial Opcional):**
+Body is optional. If provided, `storage.available_gb` updates the relay's available capacity:
 ```json
 {
   "storage": {
@@ -272,15 +436,56 @@ Content-Type: application/json
 }
 ```
 
-**Resposta de Sucesso (`204 No Content`)**
+**Response `204 No Content`** — success, no body.
+
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `401 Unauthorized` | Missing or invalid token |
+| `404 Not Found` | Relay for this `node_id` not found |
+| `429 Too Many Requests` | IP rate limit exceeded |
+| `500 Internal Server Error` | Database write failure |
 
 ---
 
-### Deregister Relay (Hard Delete)
+### `DELETE /relays/{node_id}`
 
+Deregister a relay (hard delete). The node registration is preserved; only the relay entry is removed.
+
+**Request:**
 ```http
-DELETE /relays/{node_id}
+DELETE /relays/goy-node-760cada1b87b1d48
 Authorization: Bearer <COORD_ADMIN_API_KEY>
 ```
 
-**Resposta de Sucesso (`204 No Content`)**
+**Response `204 No Content`** — success, no body.
+
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `401 Unauthorized` | Missing or invalid token |
+| `404 Not Found` | Relay for this `node_id` not found |
+| `429 Too Many Requests` | IP rate limit exceeded |
+
+---
+
+## Common Error Format
+
+All error responses use this envelope:
+
+```json
+{
+  "error": "machine-readable-key",
+  "details": "human-readable explanation"
+}
+```
+
+Or for validation errors:
+```json
+{
+  "error": "invalid_request",
+  "details": "auth_key: must be at least 20 characters"
+}
+```

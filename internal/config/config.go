@@ -82,7 +82,7 @@ const (
 	DefaultWriteTimeoutSeconds          = 15
 	DefaultRequireAuth                  = true
 	DefaultRequestsPerMinute            = 60
-	DefaultBurst                        = 10
+	DefaultBurst                        = 30
 	DefaultHeartbeatRPM                 = 120
 	DefaultCleanupRelaysIntervalSeconds = 60
 	DefaultCleanupNodesIntervalSeconds  = 300
