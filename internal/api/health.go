@@ -56,7 +56,7 @@ func InfoHandler(cfg *config.Config, startTime time.Time) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		uptime := int64(time.Since(startTime).Seconds())
-		vpnEnabled := cfg.VPN.HeadscaleAPIURL != ""
+		vpnEnabled := cfg.VPN.Enabled && cfg.VPN.Provider != ""
 
 		resp := InfoResponse{
 			Version:               ServerVersion,

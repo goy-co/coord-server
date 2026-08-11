@@ -54,14 +54,17 @@ func main() {
 
 	slog.Info("SQLite database initialized successfully", slog.String("path", cfg.Database.Path))
 
-	// 3. Initialize VPN Provider (Headscale)
-	var vpnProvider vpn.VPNProvider
-	if cfg.VPN.Enabled {
-		vpnProvider = vpn.NewHeadscaleClient(cfg.VPN.HeadscaleAPIURL, cfg.VPN.HeadscaleAPIKey, cfg.VPN.HeadscaleUser)
-		slog.Info("Headscale VPN integration enabled", slog.String("url", cfg.VPN.HeadscaleAPIURL), slog.String("user", cfg.VPN.HeadscaleUser))
+	// 3. Initialize VPN Provider
+	vpnProvider, err := vpn.NewVPNProvider(&cfg.VPN)
+	if err != nil {
+		slog.Error("Failed to initialize VPN provider", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	if cfg.VPN.Enabled && cfg.VPN.Provider != "" {
+		slog.Info("VPN integration enabled", slog.String("provider", vpnProvider.ProviderName()))
 	} else {
-		vpnProvider = vpn.NewNoopVPNProvider()
-		slog.Info("Headscale VPN integration disabled (using NoopVPNProvider)")
+		slog.Info("VPN integration disabled (using NoopVPNProvider)")
 	}
 
 	// 4. Initialize Rate Limiter

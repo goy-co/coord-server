@@ -38,6 +38,10 @@ func NewHeadscaleClient(baseURL, apiKey, user string) *HeadscaleClient {
 	}
 }
 
+func (c *HeadscaleClient) ProviderName() string {
+	return "headscale"
+}
+
 func (c *HeadscaleClient) GetControlURL() string {
 	return c.baseURL
 }
@@ -71,7 +75,8 @@ type listNodesResponse struct {
 }
 
 // CreatePreAuthKey generates a pre-auth key on the Headscale API with single-retry support for transient errors.
-func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, reusable bool, expiryHours int) (string, error) {
+func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, opts CreateKeyOpts) (*VPNConfig, error) {
+	expiryHours := opts.ExpiryHours
 	if expiryHours <= 0 {
 		expiryHours = 24
 	}
@@ -79,7 +84,7 @@ func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, reusable bool, e
 	expiration := time.Now().UTC().Add(time.Duration(expiryHours) * time.Hour).Format(time.RFC3339)
 	reqBody := createPreAuthKeyRequest{
 		User:       c.user,
-		Reusable:   reusable,
+		Reusable:   opts.Reusable,
 		Ephemeral:  false,
 		Expiration: expiration,
 	}
@@ -87,7 +92,7 @@ func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, reusable bool, e
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
 		metrics.VPNErrorsTotal.Inc()
-		return "", fmt.Errorf("headscale: failed to encode JSON: %w", err)
+		return nil, fmt.Errorf("headscale: failed to encode JSON: %w", err)
 	}
 
 	endpoint := fmt.Sprintf("%s/api/v1/preauthkey", c.baseURL)
@@ -102,7 +107,11 @@ func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, reusable bool, e
 		key, retryable, err := c.doCreatePreAuthKey(ctx, endpoint, bodyBytes)
 		if err == nil {
 			metrics.VPNKeysGeneratedTotal.Inc()
-			return key, nil
+			return &VPNConfig{
+				AuthKey:    key,
+				ControlURL: c.baseURL,
+				Provider:   "headscale",
+			}, nil
 		}
 
 		lastErr = err
@@ -112,7 +121,7 @@ func (c *HeadscaleClient) CreatePreAuthKey(ctx context.Context, reusable bool, e
 	}
 
 	metrics.VPNErrorsTotal.Inc()
-	return "", fmt.Errorf("headscale: failed to generate pre-auth key: %w", lastErr)
+	return nil, fmt.Errorf("headscale: failed to generate pre-auth key: %w", lastErr)
 }
 
 func (c *HeadscaleClient) doCreatePreAuthKey(ctx context.Context, endpoint string, bodyBytes []byte) (string, bool, error) {
@@ -193,14 +202,16 @@ func (c *HeadscaleClient) HealthCheck(ctx context.Context) error {
 func (c *HeadscaleClient) GetStatus(ctx context.Context) (*VPNStatusResponse, error) {
 	status := &VPNStatusResponse{
 		VPNEnabled:         true,
-		HeadscaleReachable: false,
+		Provider:           "headscale",
 		HeadscaleUser:      c.user,
-		RegisteredMachines: 0,
+		RegisteredDevices: 0,
 	}
 
 	endpoint := fmt.Sprintf("%s/api/v1/node?user=%s", c.baseURL, c.user)
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
+		reachable := false
+		status.HeadscaleReachable = &reachable
 		return status, nil
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
@@ -208,18 +219,23 @@ func (c *HeadscaleClient) GetStatus(ctx context.Context) (*VPNStatusResponse, er
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		metrics.VPNErrorsTotal.Inc()
+		reachable := false
+		status.HeadscaleReachable = &reachable
 		return status, nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-		status.HeadscaleReachable = true
+		reachable := true
+		status.HeadscaleReachable = &reachable
 		var list listNodesResponse
 		if err := json.NewDecoder(resp.Body).Decode(&list); err == nil {
-			status.RegisteredMachines = len(list.Nodes)
+			status.RegisteredDevices = len(list.Nodes)
 		}
 	} else {
 		metrics.VPNErrorsTotal.Inc()
+		reachable := false
+		status.HeadscaleReachable = &reachable
 	}
 
 	return status, nil

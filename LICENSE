@@ -1,9 +1,14 @@
-Goy Source Available License
+Goy Source Available License (GSAL)
 
-Copyright (c) 2026 Goy Co. All rights reserved.
+Copyright © 2026 The Goy Company. All rights reserved.
 
-Permission is hereby granted to view, inspect, and run this software solely for internal or non-commercial evaluation purposes, subject to the condition that full source attribution to Goy Co. is maintained.
+This software and associated documentation files (the "Software") are provided under a source-available terms model for public inspection and trust verification purposes only.
 
-Commercial redistribution or commercial hosting of this software as a service requires explicit authorization from Goy Co.
+TERMS AND CONDITIONS:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+1. View-Only Permission: Permission is hereby granted to any person obtaining a copy of the Software solely to view, inspect, and audit the source code.
+2. Prohibited Uses: You may NOT copy, modify, merge, publish, distribute, sublicense, sell, perform, or contribute to copies of the Software, in whole or in part, for commercial or non-commercial purposes.
+3. No Redistribution / Contributions: External contributions, forks, pull requests, redistribution, or derivative works are strictly prohibited unless authorized under a separate explicit written agreement with The Goy Company.
+4. Attribution: The above copyright notice and this permission notice shall be retained in all copies or viewings of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

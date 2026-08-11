@@ -241,15 +241,17 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 	}
 	defer st.Close()
 
-	t.Run("Register Node with VPN Enabled & Valid Key", func(t *testing.T) {
+	t.Run("Register Node with Headscale VPN Enabled & Valid Key", func(t *testing.T) {
 		cfg := config.DefaultConfig()
 		cfg.Auth.RequireAuth = true
 		cfg.Auth.AdminAPIKey = "valid-hs-admin-key"
 		cfg.VPN.Enabled = true
+		cfg.VPN.Provider = "headscale"
 		cfg.VPN.HeadscaleAPIURL = "https://vpn.goy.test"
 		cfg.VPN.HeadscaleAPIKey = "valid-hs-key"
 
 		mockVPN := vpn.NewMockVPNProvider("tskey-auth-mock-123456", nil)
+		mockVPN.Provider = "headscale"
 		router := api.NewRouter(cfg, st, time.Now(), mockVPN, nil)
 
 		body := api.RegisterNodeRequest{
@@ -280,6 +282,55 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 		if resp.VPNConfig.ControlURL != "https://vpn.goy.test" {
 			t.Errorf("Expected vpn_config.control_url 'https://vpn.goy.test', got: '%s'", resp.VPNConfig.ControlURL)
 		}
+		if resp.VPNConfig.Provider != "headscale" {
+			t.Errorf("Expected vpn_config.provider 'headscale', got: '%s'", resp.VPNConfig.Provider)
+		}
+	})
+
+	t.Run("Register Node with Tailscale VPN Enabled & Valid Key", func(t *testing.T) {
+		cfg := config.DefaultConfig()
+		cfg.Auth.RequireAuth = true
+		cfg.Auth.AdminAPIKey = "valid-ts-admin-key"
+		cfg.VPN.Enabled = true
+		cfg.VPN.Provider = "tailscale"
+		cfg.VPN.TailscaleAPIKey = "valid-ts-key"
+		cfg.VPN.TailscaleTailnet = "my-org.ts.net"
+
+		mockVPN := vpn.NewMockVPNProvider("tskey-auth-tailscale-999", nil)
+		mockVPN.Provider = "tailscale"
+		router := api.NewRouter(cfg, st, time.Now(), mockVPN, nil)
+
+		body := api.RegisterNodeRequest{
+			AuthKey: "gc_ts_vpn_test_key_123456789",
+			Name:    "ts-vpn-node-success",
+		}
+		bodyBytes, _ := json.Marshal(body)
+
+		req := httptest.NewRequest("POST", "/v1/nodes/register", bytes.NewBuffer(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer valid-ts-admin-key")
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("Expected status 201, got: %d", rec.Code)
+		}
+
+		var resp api.RegisterNodeResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if resp.VPNConfig.AuthKey != "tskey-auth-tailscale-999" {
+			t.Errorf("Expected vpn_config.auth_key 'tskey-auth-tailscale-999', got: '%s'", resp.VPNConfig.AuthKey)
+		}
+		if resp.VPNConfig.ControlURL != "" {
+			t.Errorf("Expected empty vpn_config.control_url for Tailscale, got: '%s'", resp.VPNConfig.ControlURL)
+		}
+		if resp.VPNConfig.Provider != "tailscale" {
+			t.Errorf("Expected vpn_config.provider 'tailscale', got: '%s'", resp.VPNConfig.Provider)
+		}
 	})
 
 	t.Run("Register Node with VPN Error (Graceful Fallback)", func(t *testing.T) {
@@ -287,10 +338,12 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 		cfg.Auth.RequireAuth = true
 		cfg.Auth.AdminAPIKey = "valid-hs-admin-key"
 		cfg.VPN.Enabled = true
+		cfg.VPN.Provider = "headscale"
 		cfg.VPN.HeadscaleAPIURL = "https://vpn.goy.test"
 		cfg.VPN.HeadscaleAPIKey = "valid-hs-key"
 
 		mockVPN := vpn.NewMockVPNProvider("", errors.New("headscale service down"))
+		mockVPN.Provider = "headscale"
 		router := api.NewRouter(cfg, st, time.Now(), mockVPN, nil)
 
 		body := api.RegisterNodeRequest{
@@ -326,6 +379,7 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 		cfg.Auth.AdminAPIKey = "valid-hs-admin-key"
 
 		mockVPN := vpn.NewMockVPNProvider("test-key", nil)
+		mockVPN.Provider = "tailscale"
 		router := api.NewRouter(cfg, st, time.Now(), mockVPN, nil)
 
 		req := httptest.NewRequest("GET", "/v1/vpn/status", nil)
@@ -343,7 +397,7 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 			t.Fatalf("Failed to decode VPN status response: %v", err)
 		}
 
-		if !status.VPNEnabled || !status.HeadscaleReachable || status.RegisteredMachines != 3 {
+		if !status.VPNEnabled || status.Provider != "tailscale" || status.TailscaleReachable == nil || !*status.TailscaleReachable || status.RegisteredDevices != 3 {
 			t.Errorf("Unexpected VPN status data: %+v", status)
 		}
 	})

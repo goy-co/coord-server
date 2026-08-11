@@ -32,14 +32,20 @@ type AuthConfig struct {
 	PublicPaths []string `toml:"public_paths"`
 }
 
-// VPNConfig holds parameters for integration with Headscale VPN control plane.
+// VPNConfig holds parameters for integration with Tailscale or Headscale VPN control planes.
 type VPNConfig struct {
-	Enabled               bool   `toml:"enabled"`
-	HeadscaleAPIURL       string `toml:"headscale_api_url"`
-	HeadscaleAPIKey       string `toml:"-"` // Never read from TOML, only via env var COORD_HEADSCALE_API_KEY
-	HeadscaleUser         string `toml:"headscale_user"`
-	PreAuthKeyExpiryHours int    `toml:"preauth_key_expiry_hours"`
-	PreAuthKeyReusable    bool   `toml:"preauth_key_reusable"`
+	Enabled                 bool   `toml:"enabled"`
+	Provider                string `toml:"provider"`
+	TailscaleAPIKey         string `toml:"-"` // Never read from TOML, only via env var COORD_TAILSCALE_API_KEY
+	TailscaleTailnet        string `toml:"tailscale_tailnet"`
+	TailscaleTag            string `toml:"tailscale_tag"`
+	TailscaleKeyExpiryHours int    `toml:"tailscale_key_expiry_hours"`
+	TailscaleKeyReusable    bool   `toml:"tailscale_key_reusable"`
+	HeadscaleAPIURL         string `toml:"headscale_api_url"`
+	HeadscaleAPIKey         string `toml:"-"` // Never read from TOML, only via env var COORD_HEADSCALE_API_KEY
+	HeadscaleUser           string `toml:"headscale_user"`
+	HeadscaleKeyExpiryHours int    `toml:"headscale_key_expiry_hours"`
+	HeadscaleKeyReusable    bool   `toml:"headscale_key_reusable"`
 }
 
 // RateLimitConfig holds HTTP request rate limiting rules.
@@ -92,8 +98,10 @@ const (
 	DefaultDiscoveryCacheTTLSeconds     = 15
 	DefaultMaxRelaysPerResponse         = 100
 	DefaultHeadscaleUser                = "goy-nodes"
-	DefaultPreAuthKeyExpiryHours        = 24
-	DefaultPreAuthKeyReusable           = false
+	DefaultTailscaleKeyExpiryHours     = 24
+	DefaultTailscaleKeyReusable        = false
+	DefaultHeadscaleKeyExpiryHours     = 24
+	DefaultHeadscaleKeyReusable        = false
 )
 
 var DefaultPublicPaths = []string{"/health", "/info", "/metrics"}
@@ -116,12 +124,18 @@ func DefaultConfig() *Config {
 			PublicPaths: DefaultPublicPaths,
 		},
 		VPN: VPNConfig{
-			Enabled:               false,
-			HeadscaleAPIURL:       "",
-			HeadscaleAPIKey:       "",
-			HeadscaleUser:         DefaultHeadscaleUser,
-			PreAuthKeyExpiryHours: DefaultPreAuthKeyExpiryHours,
-			PreAuthKeyReusable:    DefaultPreAuthKeyReusable,
+			Enabled:                 false,
+			Provider:                "",
+			TailscaleAPIKey:         "",
+			TailscaleTailnet:        "",
+			TailscaleTag:            "",
+			TailscaleKeyExpiryHours: DefaultTailscaleKeyExpiryHours,
+			TailscaleKeyReusable:    DefaultTailscaleKeyReusable,
+			HeadscaleAPIURL:         "",
+			HeadscaleAPIKey:         "",
+			HeadscaleUser:           DefaultHeadscaleUser,
+			HeadscaleKeyExpiryHours: DefaultHeadscaleKeyExpiryHours,
+			HeadscaleKeyReusable:    DefaultHeadscaleKeyReusable,
 		},
 		RateLimit: RateLimitConfig{
 			RequestsPerMinute: DefaultRequestsPerMinute,
@@ -188,11 +202,14 @@ func applyDefaults(cfg *Config) {
 	if len(cfg.Auth.PublicPaths) == 0 {
 		cfg.Auth.PublicPaths = DefaultPublicPaths
 	}
+	if cfg.VPN.TailscaleKeyExpiryHours <= 0 {
+		cfg.VPN.TailscaleKeyExpiryHours = DefaultTailscaleKeyExpiryHours
+	}
 	if cfg.VPN.HeadscaleUser == "" {
 		cfg.VPN.HeadscaleUser = DefaultHeadscaleUser
 	}
-	if cfg.VPN.PreAuthKeyExpiryHours <= 0 {
-		cfg.VPN.PreAuthKeyExpiryHours = DefaultPreAuthKeyExpiryHours
+	if cfg.VPN.HeadscaleKeyExpiryHours <= 0 {
+		cfg.VPN.HeadscaleKeyExpiryHours = DefaultHeadscaleKeyExpiryHours
 	}
 	if cfg.RateLimit.RequestsPerMinute <= 0 {
 		cfg.RateLimit.RequestsPerMinute = DefaultRequestsPerMinute
@@ -249,6 +266,30 @@ func applyEnvOverrides(cfg *Config) {
 	if envVPNEnabled := os.Getenv("COORD_VPN_ENABLED"); envVPNEnabled != "" {
 		cfg.VPN.Enabled = envVPNEnabled == "true" || envVPNEnabled == "1"
 	}
+	if envVPNProvider := os.Getenv("COORD_VPN_PROVIDER"); envVPNProvider != "" {
+		cfg.VPN.Provider = envVPNProvider
+	}
+
+	// Tailscale Overrides
+	if envTailscaleKey := os.Getenv("COORD_TAILSCALE_API_KEY"); envTailscaleKey != "" {
+		cfg.VPN.TailscaleAPIKey = envTailscaleKey
+	}
+	if envTailscaleTailnet := os.Getenv("COORD_TAILSCALE_TAILNET"); envTailscaleTailnet != "" {
+		cfg.VPN.TailscaleTailnet = envTailscaleTailnet
+	}
+	if envTailscaleTag := os.Getenv("COORD_TAILSCALE_TAG"); envTailscaleTag != "" {
+		cfg.VPN.TailscaleTag = envTailscaleTag
+	}
+	if envTailscaleExpiry := os.Getenv("COORD_TAILSCALE_KEY_EXPIRY_HOURS"); envTailscaleExpiry != "" {
+		if val, err := strconv.Atoi(envTailscaleExpiry); err == nil && val > 0 {
+			cfg.VPN.TailscaleKeyExpiryHours = val
+		}
+	}
+	if envTailscaleReusable := os.Getenv("COORD_TAILSCALE_KEY_REUSABLE"); envTailscaleReusable != "" {
+		cfg.VPN.TailscaleKeyReusable = envTailscaleReusable == "true" || envTailscaleReusable == "1"
+	}
+
+	// Headscale Overrides
 	if envHeadscaleURL := os.Getenv("COORD_HEADSCALE_API_URL"); envHeadscaleURL != "" {
 		cfg.VPN.HeadscaleAPIURL = envHeadscaleURL
 	}
@@ -257,6 +298,14 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if envHeadscaleUser := os.Getenv("COORD_HEADSCALE_USER"); envHeadscaleUser != "" {
 		cfg.VPN.HeadscaleUser = envHeadscaleUser
+	}
+	if envHeadscaleExpiry := os.Getenv("COORD_HEADSCALE_KEY_EXPIRY_HOURS"); envHeadscaleExpiry != "" {
+		if val, err := strconv.Atoi(envHeadscaleExpiry); err == nil && val > 0 {
+			cfg.VPN.HeadscaleKeyExpiryHours = val
+		}
+	}
+	if envHeadscaleReusable := os.Getenv("COORD_HEADSCALE_KEY_REUSABLE"); envHeadscaleReusable != "" {
+		cfg.VPN.HeadscaleKeyReusable = envHeadscaleReusable == "true" || envHeadscaleReusable == "1"
 	}
 
 	// Rate Limit Overrides
@@ -322,12 +371,27 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	if c.VPN.Enabled {
-		if strings.TrimSpace(c.VPN.HeadscaleAPIURL) == "" {
-			return errors.New("vpn.enabled is true but vpn.headscale_api_url (COORD_HEADSCALE_API_URL) is empty")
-		}
-		if strings.TrimSpace(c.VPN.HeadscaleAPIKey) == "" {
-			return errors.New("vpn.enabled is true but COORD_HEADSCALE_API_KEY is empty")
+	if c.VPN.Enabled && c.VPN.Provider != "" {
+		switch c.VPN.Provider {
+		case "tailscale":
+			if strings.TrimSpace(c.VPN.TailscaleAPIKey) == "" {
+				return errors.New("vpn.provider is 'tailscale' but COORD_TAILSCALE_API_KEY is empty")
+			}
+			if strings.TrimSpace(c.VPN.TailscaleTailnet) == "" {
+				return errors.New("vpn.provider is 'tailscale' but vpn.tailscale_tailnet (COORD_TAILSCALE_TAILNET) is empty")
+			}
+		case "headscale":
+			if strings.TrimSpace(c.VPN.HeadscaleAPIURL) == "" {
+				return errors.New("vpn.provider is 'headscale' but vpn.headscale_api_url (COORD_HEADSCALE_API_URL) is empty")
+			}
+			if strings.TrimSpace(c.VPN.HeadscaleAPIKey) == "" {
+				return errors.New("vpn.provider is 'headscale' but COORD_HEADSCALE_API_KEY is empty")
+			}
+			if strings.TrimSpace(c.VPN.HeadscaleUser) == "" {
+				return errors.New("vpn.provider is 'headscale' but vpn.headscale_user (COORD_HEADSCALE_USER) is empty")
+			}
+		default:
+			return fmt.Errorf("invalid vpn.provider '%s': valid options are 'tailscale', 'headscale', ''", c.VPN.Provider)
 		}
 	}
 
@@ -369,22 +433,25 @@ public_paths = ["/health", "/info", "/metrics"]
 # Set the COORD_ADMIN_API_KEY environment variable in your execution environment.
 
 [vpn]
-# Enable or disable Headscale integration (default: false)
+# Enable or disable VPN integration (default: false)
 enabled = false
 
-# Headscale API base URL (e.g., https://vpn.goyco.xyz)
+# Provider type: "tailscale" | "headscale" | "" (disabled)
+provider = ""
+
+# Tailscale config (used when provider = "tailscale")
+tailscale_tailnet = ""
+tailscale_tag = ""
+tailscale_key_expiry_hours = 24
+tailscale_key_reusable = false
+# Note: COORD_TAILSCALE_API_KEY must be provided via environment variable.
+
+# Headscale config (used when provider = "headscale")
 headscale_api_url = ""
-
-# User/Namespace where nodes are registered in Headscale
 headscale_user = "goy-nodes"
-
-# Validity of generated pre-auth keys (in hours)
-preauth_key_expiry_hours = 24
-
-# Whether generated pre-auth keys can be reused
-preauth_key_reusable = false
-
-# Note: The Headscale API key must be provided via the COORD_HEADSCALE_API_KEY environment variable.
+headscale_key_expiry_hours = 24
+headscale_key_reusable = false
+# Note: COORD_HEADSCALE_API_KEY must be provided via environment variable.
 
 [rate_limit]
 # Global HTTP request limit per minute per IP

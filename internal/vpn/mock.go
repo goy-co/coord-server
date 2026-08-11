@@ -9,8 +9,16 @@ func NewNoopVPNProvider() *NoopVPNProvider {
 	return &NoopVPNProvider{}
 }
 
-func (p *NoopVPNProvider) CreatePreAuthKey(ctx context.Context, reusable bool, expiryHours int) (string, error) {
-	return "", nil
+func (p *NoopVPNProvider) ProviderName() string {
+	return ""
+}
+
+func (p *NoopVPNProvider) CreatePreAuthKey(ctx context.Context, opts CreateKeyOpts) (*VPNConfig, error) {
+	return &VPNConfig{
+		AuthKey:    "",
+		ControlURL: "",
+		Provider:   "",
+	}, nil
 }
 
 func (p *NoopVPNProvider) HealthCheck(ctx context.Context) error {
@@ -19,19 +27,15 @@ func (p *NoopVPNProvider) HealthCheck(ctx context.Context) error {
 
 func (p *NoopVPNProvider) GetStatus(ctx context.Context) (*VPNStatusResponse, error) {
 	return &VPNStatusResponse{
-		VPNEnabled:         false,
-		HeadscaleReachable: false,
-		HeadscaleUser:      "",
-		RegisteredMachines: 0,
+		VPNEnabled:        false,
+		Provider:          "",
+		RegisteredDevices: 0,
 	}, nil
-}
-
-func (p *NoopVPNProvider) GetControlURL() string {
-	return ""
 }
 
 // MockVPNProvider is a configurable mock implementation used in unit and integration tests.
 type MockVPNProvider struct {
+	Provider           string
 	KeyToReturn        string
 	ErrToReturn        error
 	ControlURL         string
@@ -41,6 +45,7 @@ type MockVPNProvider struct {
 
 func NewMockVPNProvider(key string, err error) *MockVPNProvider {
 	return &MockVPNProvider{
+		Provider:           "headscale",
 		KeyToReturn:        key,
 		ErrToReturn:        err,
 		ControlURL:         "https://vpn.goy.test",
@@ -49,11 +54,26 @@ func NewMockVPNProvider(key string, err error) *MockVPNProvider {
 	}
 }
 
-func (m *MockVPNProvider) CreatePreAuthKey(ctx context.Context, reusable bool, expiryHours int) (string, error) {
-	if m.ErrToReturn != nil {
-		return "", m.ErrToReturn
+func (m *MockVPNProvider) ProviderName() string {
+	if m.Provider != "" {
+		return m.Provider
 	}
-	return m.KeyToReturn, nil
+	return "headscale"
+}
+
+func (m *MockVPNProvider) CreatePreAuthKey(ctx context.Context, opts CreateKeyOpts) (*VPNConfig, error) {
+	if m.ErrToReturn != nil {
+		return nil, m.ErrToReturn
+	}
+	ctrlURL := m.ControlURL
+	if m.ProviderName() == "tailscale" {
+		ctrlURL = ""
+	}
+	return &VPNConfig{
+		AuthKey:    m.KeyToReturn,
+		ControlURL: ctrlURL,
+		Provider:   m.ProviderName(),
+	}, nil
 }
 
 func (m *MockVPNProvider) HealthCheck(ctx context.Context) error {
@@ -64,14 +84,18 @@ func (m *MockVPNProvider) HealthCheck(ctx context.Context) error {
 }
 
 func (m *MockVPNProvider) GetStatus(ctx context.Context) (*VPNStatusResponse, error) {
-	return &VPNStatusResponse{
-		VPNEnabled:         true,
-		HeadscaleReachable: m.Reachable,
-		HeadscaleUser:      "goy-nodes-test",
-		RegisteredMachines: m.RegisteredMachines,
-	}, nil
-}
-
-func (m *MockVPNProvider) GetControlURL() string {
-	return m.ControlURL
+	reachable := m.Reachable
+	resp := &VPNStatusResponse{
+		VPNEnabled:        true,
+		Provider:          m.ProviderName(),
+		RegisteredDevices: m.RegisteredMachines,
+	}
+	if m.ProviderName() == "headscale" {
+		resp.HeadscaleReachable = &reachable
+		resp.HeadscaleUser = "goy-nodes-test"
+	} else if m.ProviderName() == "tailscale" {
+		resp.TailscaleReachable = &reachable
+		resp.Tailnet = "my-org.ts.net"
+	}
+	return resp, nil
 }

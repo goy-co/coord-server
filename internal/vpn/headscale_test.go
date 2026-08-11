@@ -27,17 +27,30 @@ func TestHeadscaleClientCreatePreAuthKeySuccess(t *testing.T) {
 	client := vpn.NewHeadscaleClient(server.URL, "test-api-key", "goy-nodes")
 	ctx := context.Background()
 
-	key, err := client.CreatePreAuthKey(ctx, false, 24)
+	opts := vpn.CreateKeyOpts{
+		Reusable:    false,
+		ExpiryHours: 24,
+	}
+
+	cfg, err := client.CreatePreAuthKey(ctx, opts)
 	if err != nil {
 		t.Fatalf("Expected success generating pre-auth key, got error: %v", err)
 	}
 
-	if key != "tskey-auth-1234567890" {
-		t.Errorf("Expected key 'tskey-auth-1234567890', got: '%s'", key)
+	if cfg.AuthKey != "tskey-auth-1234567890" {
+		t.Errorf("Expected key 'tskey-auth-1234567890', got: '%s'", cfg.AuthKey)
+	}
+
+	if cfg.ControlURL != server.URL {
+		t.Errorf("Expected ControlURL %s, got: %s", server.URL, cfg.ControlURL)
+	}
+
+	if cfg.Provider != "headscale" {
+		t.Errorf("Expected provider 'headscale', got: '%s'", cfg.Provider)
 	}
 
 	if client.GetControlURL() != server.URL {
-		t.Errorf("Expected ControlURL %s, got: %s", server.URL, client.GetControlURL())
+		t.Errorf("Expected GetControlURL %s, got: %s", server.URL, client.GetControlURL())
 	}
 }
 
@@ -50,7 +63,12 @@ func TestHeadscaleClientCreatePreAuthKeyUnauthorized(t *testing.T) {
 	client := vpn.NewHeadscaleClient(server.URL, "invalid-key", "goy-nodes")
 	ctx := context.Background()
 
-	_, err := client.CreatePreAuthKey(ctx, false, 24)
+	opts := vpn.CreateKeyOpts{
+		Reusable:    false,
+		ExpiryHours: 24,
+	}
+
+	_, err := client.CreatePreAuthKey(ctx, opts)
 	if err == nil {
 		t.Fatalf("Expected error for unauthorized API key")
 	}
@@ -73,13 +91,18 @@ func TestHeadscaleClientRetryOnServerError(t *testing.T) {
 	client := vpn.NewHeadscaleClient(server.URL, "test-key", "goy-nodes")
 	ctx := context.Background()
 
-	key, err := client.CreatePreAuthKey(ctx, false, 24)
+	opts := vpn.CreateKeyOpts{
+		Reusable:    false,
+		ExpiryHours: 24,
+	}
+
+	cfg, err := client.CreatePreAuthKey(ctx, opts)
 	if err != nil {
 		t.Fatalf("Expected success after retry, got error: %v", err)
 	}
 
-	if key != "tskey-auth-recovered" {
-		t.Errorf("Expected key 'tskey-auth-recovered', got: '%s'", key)
+	if cfg.AuthKey != "tskey-auth-recovered" {
+		t.Errorf("Expected key 'tskey-auth-recovered', got: '%s'", cfg.AuthKey)
 	}
 
 	if attempts != 2 {

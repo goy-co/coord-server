@@ -32,6 +32,7 @@ type RegisterNodeRequest struct {
 type VPNConfigResponse struct {
 	AuthKey    string `json:"auth_key"`
 	ControlURL string `json:"control_url"`
+	Provider   string `json:"provider"`
 }
 
 // RegisterNodeResponse represents the response for POST /v1/nodes/register.
@@ -108,15 +109,38 @@ func sendRegisterResponse(w http.ResponseWriter, r *http.Request, n *store.Node,
 
 	vpnAuthKey := ""
 	vpnControlURL := ""
+	providerName := ""
 
-	if cfg.VPN.Enabled && vpnProvider != nil {
-		key, err := vpnProvider.CreatePreAuthKey(r.Context(), cfg.VPN.PreAuthKeyReusable, cfg.VPN.PreAuthKeyExpiryHours)
+	if cfg.VPN.Enabled && cfg.VPN.Provider != "" && vpnProvider != nil {
+		var expiryHours int
+		var reusable bool
+		var tags []string
+
+		if cfg.VPN.Provider == "tailscale" {
+			expiryHours = cfg.VPN.TailscaleKeyExpiryHours
+			reusable = cfg.VPN.TailscaleKeyReusable
+			if cfg.VPN.TailscaleTag != "" {
+				tags = []string{cfg.VPN.TailscaleTag}
+			}
+		} else if cfg.VPN.Provider == "headscale" {
+			expiryHours = cfg.VPN.HeadscaleKeyExpiryHours
+			reusable = cfg.VPN.HeadscaleKeyReusable
+		}
+
+		opts := vpn.CreateKeyOpts{
+			Reusable:    reusable,
+			ExpiryHours: expiryHours,
+			Tags:        tags,
+		}
+
+		vpnCfg, err := vpnProvider.CreatePreAuthKey(r.Context(), opts)
 		if err != nil {
-			slog.Warn("headscale: failed to generate pre-auth key, proceeding with empty vpn_config", slog.String("error", err.Error()))
-		} else {
-			vpnAuthKey = key
-			vpnControlURL = vpnProvider.GetControlURL()
-			slog.Info("Headscale pre-auth key generated successfully for node", slog.String("node_id", n.ID))
+			slog.Warn("vpn: failed to generate pre-auth key, proceeding with empty vpn_config", slog.String("provider", vpnProvider.ProviderName()), slog.String("error", err.Error()))
+		} else if vpnCfg != nil {
+			vpnAuthKey = vpnCfg.AuthKey
+			vpnControlURL = vpnCfg.ControlURL
+			providerName = vpnCfg.Provider
+			slog.Info("VPN pre-auth key generated successfully for node", slog.String("provider", providerName), slog.String("node_id", n.ID))
 		}
 	} else {
 		slog.Debug("VPN integration disabled, returning empty vpn_config")
@@ -129,6 +153,7 @@ func sendRegisterResponse(w http.ResponseWriter, r *http.Request, n *store.Node,
 		VPNConfig: VPNConfigResponse{
 			AuthKey:    vpnAuthKey,
 			ControlURL: vpnControlURL,
+			Provider:   providerName,
 		},
 		RegistryURL: registryURL,
 		CreatedAt:   n.CreatedAt,

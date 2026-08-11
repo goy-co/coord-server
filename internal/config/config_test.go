@@ -15,6 +15,9 @@ func TestLoadDefaults(t *testing.T) {
 	os.Unsetenv("COORD_ADMIN_API_KEY")
 	os.Unsetenv("COORD_AUTH_SECRET")
 	os.Unsetenv("COORD_VPN_ENABLED")
+	os.Unsetenv("COORD_VPN_PROVIDER")
+	os.Unsetenv("COORD_TAILSCALE_API_KEY")
+	os.Unsetenv("COORD_TAILSCALE_TAILNET")
 	os.Unsetenv("COORD_HEADSCALE_API_URL")
 	os.Unsetenv("COORD_HEADSCALE_API_KEY")
 	os.Unsetenv("COORD_RATE_LIMIT_RPM")
@@ -56,6 +59,7 @@ func TestLoadEnvOverrides(t *testing.T) {
 	t.Setenv("COORD_ADMIN_API_KEY", "admin-secret-key-123")
 	t.Setenv("COORD_AUTH_SECRET", "super-secret-key")
 	t.Setenv("COORD_VPN_ENABLED", "true")
+	t.Setenv("COORD_VPN_PROVIDER", "headscale")
 	t.Setenv("COORD_HEADSCALE_API_URL", "https://vpn.example.com")
 	t.Setenv("COORD_HEADSCALE_API_KEY", "hs-api-key-123")
 	t.Setenv("COORD_HEADSCALE_USER", "custom-goy-nodes")
@@ -72,6 +76,9 @@ func TestLoadEnvOverrides(t *testing.T) {
 
 	if cfg.Auth.AdminAPIKey != "admin-secret-key-123" {
 		t.Errorf("Expected AdminAPIKey admin-secret-key-123, got: %s", cfg.Auth.AdminAPIKey)
+	}
+	if cfg.VPN.Provider != "headscale" {
+		t.Errorf("Expected VPN Provider headscale, got: %s", cfg.VPN.Provider)
 	}
 	if cfg.RateLimit.RequestsPerMinute != 120 {
 		t.Errorf("Expected RateLimit 120, got: %d", cfg.RateLimit.RequestsPerMinute)
@@ -104,5 +111,54 @@ func TestConfigValidation(t *testing.T) {
 
 	if err := authRequiredWithoutKey.Validate(); err == nil {
 		t.Errorf("Expected validation error when RequireAuth is true without COORD_ADMIN_API_KEY")
+	}
+
+	// Tailscale validation tests
+	tailscaleValid := config.DefaultConfig()
+	tailscaleValid.Auth.RequireAuth = false
+	tailscaleValid.VPN.Enabled = true
+	tailscaleValid.VPN.Provider = "tailscale"
+	tailscaleValid.VPN.TailscaleAPIKey = "ts-key"
+	tailscaleValid.VPN.TailscaleTailnet = "my-org.ts.net"
+	if err := tailscaleValid.Validate(); err != nil {
+		t.Errorf("Expected valid tailscale config, got: %v", err)
+	}
+
+	tailscaleMissingKey := config.DefaultConfig()
+	tailscaleMissingKey.Auth.RequireAuth = false
+	tailscaleMissingKey.VPN.Enabled = true
+	tailscaleMissingKey.VPN.Provider = "tailscale"
+	tailscaleMissingKey.VPN.TailscaleTailnet = "my-org.ts.net"
+	if err := tailscaleMissingKey.Validate(); err == nil {
+		t.Errorf("Expected error for tailscale missing API key")
+	}
+
+	// Headscale validation tests
+	headscaleValid := config.DefaultConfig()
+	headscaleValid.Auth.RequireAuth = false
+	headscaleValid.VPN.Enabled = true
+	headscaleValid.VPN.Provider = "headscale"
+	headscaleValid.VPN.HeadscaleAPIURL = "https://vpn.example.com"
+	headscaleValid.VPN.HeadscaleAPIKey = "hs-key"
+	headscaleValid.VPN.HeadscaleUser = "goy-nodes"
+	if err := headscaleValid.Validate(); err != nil {
+		t.Errorf("Expected valid headscale config, got: %v", err)
+	}
+
+	headscaleMissingURL := config.DefaultConfig()
+	headscaleMissingURL.Auth.RequireAuth = false
+	headscaleMissingURL.VPN.Enabled = true
+	headscaleMissingURL.VPN.Provider = "headscale"
+	headscaleMissingURL.VPN.HeadscaleAPIKey = "hs-key"
+	if err := headscaleMissingURL.Validate(); err == nil {
+		t.Errorf("Expected error for headscale missing API URL")
+	}
+
+	invalidProvider := config.DefaultConfig()
+	invalidProvider.Auth.RequireAuth = false
+	invalidProvider.VPN.Enabled = true
+	invalidProvider.VPN.Provider = "wireguard"
+	if err := invalidProvider.Validate(); err == nil {
+		t.Errorf("Expected error for invalid vpn provider")
 	}
 }
