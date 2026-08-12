@@ -42,6 +42,7 @@ type Store interface {
 	GetRelayByNodeID(ctx context.Context, nodeID string) (*Relay, error)
 	ListActiveRelays(ctx context.Context, ttlWindowSeconds int, since *time.Time, minStorageGB uint64, limit int) ([]Relay, int, error)
 	UpdateRelayHeartbeat(ctx context.Context, nodeID string, storageAvailableGB *uint64) error
+	UpdateRelayFull(ctx context.Context, relay *Relay) error
 	MarkRelayUnreachable(ctx context.Context, nodeID string) error
 	DeleteRelay(ctx context.Context, nodeID string) error
 	CountActiveRelays(ctx context.Context, ttlWindowSeconds int) (int, error)

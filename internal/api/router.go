@@ -49,7 +49,11 @@ func NewRouter(cfg *config.Config, st store.Store, startTime time.Time, vpnProvi
 		// VPN Status Route (/v1/vpn/status)
 		r.Get("/v1/vpn/status", GetVPNStatusHandler(vpnProvider))
 
-		// Relays Routes (/relays/*)
+		// Relays Routes (/v1/relays/* and /relays/*)
+		r.Route("/v1/relays", func(r chi.Router) {
+			r.Put("/{node_id}", PutV1RelayHeartbeatHandler(st, cfg, relayCache))
+		})
+
 		r.Route("/relays", func(r chi.Router) {
 			r.Get("/", GetRelaysHandler(st, cfg, relayCache))
 			r.Post("/", RegisterRelayHandler(st, cfg, relayCache))

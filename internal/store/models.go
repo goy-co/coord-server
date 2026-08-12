@@ -42,6 +42,7 @@ type Relay struct {
 	StorageAvailableGB uint64    `json:"storage_available_gb"`
 	ReplicationFactor  uint32    `json:"replication_factor"`
 	Version            string    `json:"version"`
+	UptimeSecs         uint64    `json:"uptime_secs,omitempty"`
 	Capabilities       []string  `json:"capabilities"`
 	Status             string    `json:"status"`
 	LastSeenAt         time.Time `json:"last_seen"`

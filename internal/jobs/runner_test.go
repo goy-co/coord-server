@@ -59,6 +59,7 @@ func (m *mockStore) ListActiveRelays(_ context.Context, _ int, _ *time.Time, _ u
 	return nil, 0, nil
 }
 func (m *mockStore) UpdateRelayHeartbeat(_ context.Context, _ string, _ *uint64) error { return nil }
+func (m *mockStore) UpdateRelayFull(_ context.Context, _ *store.Relay) error           { return nil }
 func (m *mockStore) MarkRelayUnreachable(_ context.Context, _ string) error             { return nil }
 func (m *mockStore) DeleteRelay(_ context.Context, _ string) error                      { return nil }
 func (m *mockStore) CountActiveRelays(_ context.Context, _ int) (int, error) {

@@ -86,6 +86,7 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		storage_available_gb INTEGER NOT NULL DEFAULT 0,
 		replication_factor INTEGER NOT NULL DEFAULT 1,
 		version TEXT NOT NULL DEFAULT '',
+		uptime_secs INTEGER NOT NULL DEFAULT 0,
 		capabilities TEXT NOT NULL DEFAULT '[]',
 		status TEXT NOT NULL DEFAULT 'active',
 		last_seen DATETIME NOT NULL DEFAULT (datetime('now')),
@@ -119,6 +120,7 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	alterRelayQueries := []string{
 		"ALTER TABLE relays ADD COLUMN replication_factor INTEGER NOT NULL DEFAULT 1",
 		"ALTER TABLE relays ADD COLUMN version TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE relays ADD COLUMN uptime_secs INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE relays ADD COLUMN capabilities TEXT NOT NULL DEFAULT '[]'",
 		"ALTER TABLE relays ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
 		"ALTER TABLE relays ADD COLUMN last_seen DATETIME NOT NULL DEFAULT (datetime('now'))",
@@ -504,6 +506,7 @@ func scanRelay(scanner interface{ Scan(dest ...any) error }) (*Relay, error) {
 		&r.StorageAvailableGB,
 		&r.ReplicationFactor,
 		&r.Version,
+		&r.UptimeSecs,
 		&capsJSON,
 		&r.Status,
 		&r.LastSeenAt,
@@ -556,8 +559,8 @@ func (s *SQLiteStore) UpsertRelay(ctx context.Context, relay *Relay) error {
 	query := `
 	INSERT INTO relays (
 		node_id, url, fingerprint, storage_reserved_gb, storage_available_gb,
-		replication_factor, version, capabilities, status, last_seen, last_seen_at, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		replication_factor, version, uptime_secs, capabilities, status, last_seen, last_seen_at, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(node_id) DO UPDATE SET
 		url = excluded.url,
 		fingerprint = excluded.fingerprint,
@@ -565,6 +568,7 @@ func (s *SQLiteStore) UpsertRelay(ctx context.Context, relay *Relay) error {
 		storage_available_gb = excluded.storage_available_gb,
 		replication_factor = excluded.replication_factor,
 		version = excluded.version,
+		uptime_secs = excluded.uptime_secs,
 		capabilities = excluded.capabilities,
 		status = excluded.status,
 		last_seen = excluded.last_seen,
@@ -580,6 +584,7 @@ func (s *SQLiteStore) UpsertRelay(ctx context.Context, relay *Relay) error {
 		relay.StorageAvailableGB,
 		relay.ReplicationFactor,
 		relay.Version,
+		relay.UptimeSecs,
 		string(capsBytes),
 		relay.Status,
 		relay.LastSeenAt,
@@ -597,7 +602,7 @@ func (s *SQLiteStore) UpsertRelay(ctx context.Context, relay *Relay) error {
 func (s *SQLiteStore) GetRelayByNodeID(ctx context.Context, nodeID string) (*Relay, error) {
 	query := `
 	SELECT node_id, url, fingerprint, storage_reserved_gb, storage_available_gb,
-	       replication_factor, version, capabilities, status, last_seen_at, created_at, updated_at
+	       replication_factor, version, uptime_secs, capabilities, status, last_seen_at, created_at, updated_at
 	FROM relays
 	WHERE node_id = ?;
 	`
@@ -644,7 +649,7 @@ func (s *SQLiteStore) ListActiveRelays(ctx context.Context, ttlWindowSeconds int
 
 	selectQuery := fmt.Sprintf(`
 	SELECT node_id, url, fingerprint, storage_reserved_gb, storage_available_gb,
-	       replication_factor, version, capabilities, status, last_seen_at, created_at, updated_at
+	       replication_factor, version, uptime_secs, capabilities, status, last_seen_at, created_at, updated_at
 	FROM relays
 	%s
 	ORDER BY last_seen_at DESC
@@ -699,6 +704,54 @@ func (s *SQLiteStore) UpdateRelayHeartbeat(ctx context.Context, nodeID string, s
 	res, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("error updating relay heartbeat (%s): %w", nodeID, err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrRelayNotFound
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) UpdateRelayFull(ctx context.Context, relay *Relay) error {
+	now := time.Now().UTC()
+	relay.LastSeenAt = now
+	relay.UpdatedAt = now
+	relay.Status = RelayStatusActive
+
+	query := `
+	UPDATE relays
+	SET url = ?,
+	    fingerprint = ?,
+	    storage_reserved_gb = ?,
+	    storage_available_gb = ?,
+	    version = ?,
+	    uptime_secs = ?,
+	    status = 'active',
+	    last_seen = ?,
+	    last_seen_at = ?,
+	    updated_at = ?
+	WHERE node_id = ?;
+	`
+
+	res, err := s.db.ExecContext(ctx, query,
+		relay.URL,
+		relay.Fingerprint,
+		relay.StorageReservedGB,
+		relay.StorageAvailableGB,
+		relay.Version,
+		relay.UptimeSecs,
+		now,
+		now,
+		now,
+		relay.NodeID,
+	)
+	if err != nil {
+		return fmt.Errorf("error updating relay full (%s): %w", relay.NodeID, err)
 	}
 
 	affected, err := res.RowsAffected()

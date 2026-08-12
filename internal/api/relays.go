@@ -1,12 +1,14 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +76,7 @@ type RelayDTO struct {
 	Storage           *StoragePayload `json:"storage,omitempty"`
 	ReplicationFactor uint32          `json:"replication_factor"`
 	Version           string          `json:"version"`
+	UptimeSecs        uint64          `json:"uptime_secs,omitempty"`
 	Capabilities      []string        `json:"capabilities"`
 	LastSeen          time.Time       `json:"last_seen"`
 }
@@ -89,6 +92,7 @@ func toRelayDTO(r *store.Relay) RelayDTO {
 		},
 		ReplicationFactor: r.ReplicationFactor,
 		Version:           r.Version,
+		UptimeSecs:        r.UptimeSecs,
 		Capabilities:      r.Capabilities,
 		LastSeen:          r.LastSeenAt,
 	}
@@ -117,6 +121,15 @@ type HeartbeatRelayRequest struct {
 	Storage *struct {
 		AvailableGB uint64 `json:"available_gb"`
 	} `json:"storage,omitempty"`
+}
+
+// HeartbeatV1RelayRequest represents the full payload for PUT /v1/relays/{node_id}.
+type HeartbeatV1RelayRequest struct {
+	URL         string          `json:"url"`
+	Fingerprint string          `json:"fingerprint"`
+	Storage     *StoragePayload `json:"storage"`
+	Version     string          `json:"version"`
+	UptimeSecs  uint64          `json:"uptime_secs,omitempty"`
 }
 
 // GetRelaysHandler handles the GET /relays request for peer discovery.
@@ -265,6 +278,123 @@ func RegisterRelayHandler(st store.Store, cfg *config.Config, cache *RelayCache)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(toRelayDTO(relay))
+	}
+}
+
+func authorizeNodeOwnership(r *http.Request, nodeID string, cfg *config.Config, st store.Store) bool {
+	if !cfg.Auth.RequireAuth {
+		return true
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return false
+	}
+
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return false
+	}
+
+	token := strings.TrimSpace(parts[1])
+	if token == "" {
+		return false
+	}
+
+	// 1. Admin API key override
+	if len(token) > 0 && subtle.ConstantTimeCompare([]byte(token), []byte(cfg.Auth.AdminAPIKey)) == 1 {
+		return true
+	}
+
+	// 2. Node auth key ownership check
+	hash := HashAuthKey(token, cfg.Auth.HMACSecret)
+	node, err := st.GetNodeByAuthKeyHash(r.Context(), hash)
+	if err != nil || node == nil {
+		return false
+	}
+
+	return node.ID == nodeID
+}
+
+// PutV1RelayHeartbeatHandler handles the PUT /v1/relays/{node_id} heartbeat request.
+func PutV1RelayHeartbeatHandler(st store.Store, cfg *config.Config, cache *RelayCache) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		nodeID := chi.URLParam(r, "node_id")
+		if nodeID == "" {
+			WriteBadRequest(w, "missing node_id URL parameter")
+			return
+		}
+
+		// 1. Authenticate & Verify node ownership
+		if !authorizeNodeOwnership(r, nodeID, cfg, st) {
+			WriteUnauthorized(w, "unauthorized access to node_id")
+			return
+		}
+
+		// 2. Parse & Validate JSON request body BEFORE touching DB for relay update
+		var req HeartbeatV1RelayRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			WriteBadRequest(w, "invalid request JSON body")
+			return
+		}
+
+		if err := ValidateRelayURL(req.URL); err != nil {
+			WriteBadRequest(w, fmt.Sprintf("url validation failed: %v", err))
+			return
+		}
+
+		if err := ValidateFingerprint(req.Fingerprint); err != nil {
+			WriteBadRequest(w, fmt.Sprintf("fingerprint validation failed: %v", err))
+			return
+		}
+
+		if req.Storage == nil {
+			WriteBadRequest(w, "storage payload is required")
+			return
+		}
+
+		if strings.TrimSpace(req.Version) == "" {
+			WriteBadRequest(w, "version field is required and cannot be empty")
+			return
+		}
+
+		// 3. Look up relay in database
+		relay, err := st.GetRelayByNodeID(r.Context(), nodeID)
+		if err != nil {
+			if errors.Is(err, store.ErrRelayNotFound) {
+				WriteNotFound(w, "relay", nodeID)
+				return
+			}
+			slog.Error("Error looking up relay for heartbeat", slog.String("node_id", nodeID), slog.String("error", err.Error()))
+			WriteInternalServerError(w)
+			return
+		}
+
+		// 4. Update relay fields atomically
+		relay.URL = req.URL
+		relay.Fingerprint = req.Fingerprint
+		relay.StorageReservedGB = req.Storage.ReservedGB
+		relay.StorageAvailableGB = req.Storage.AvailableGB
+		relay.Version = req.Version
+		relay.UptimeSecs = req.UptimeSecs
+		relay.Status = store.RelayStatusActive
+		relay.LastSeenAt = time.Now().UTC()
+
+		if err := st.UpdateRelayFull(r.Context(), relay); err != nil {
+			slog.Error("Error updating relay full heartbeat", slog.String("node_id", nodeID), slog.String("error", err.Error()))
+			WriteInternalServerError(w)
+			return
+		}
+
+		if cache != nil {
+			cache.Invalidate()
+		}
+
+		slog.Info("V1 Relay heartbeat updated successfully", slog.String("node_id", nodeID), slog.String("url", req.URL))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(toRelayDTO(relay))
 	}
 }

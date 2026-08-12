@@ -449,6 +449,71 @@ Body is optional. If provided, `storage.available_gb` updates the relay's availa
 
 ---
 
+### `PUT /v1/relays/{node_id}`
+
+Full relay heartbeat update. Refreshes `last_seen_at` and updates mutable relay state (`url`, `fingerprint`, `storage`, `version`, `uptime_secs`). Should be called periodically (every 60–120 seconds) by active Goy Nodes acting as storage relays.
+
+Authorized using either the global `COORD_ADMIN_API_KEY` or the node's `auth_key` (`gc_...`). When called with a node `auth_key`, ownership validation enforces that the token matches `{node_id}`.
+
+**Request:**
+```http
+PUT /v1/relays/goy-node-760cada1b87b1d48
+Authorization: Bearer <COORD_ADMIN_API_KEY | gc_auth_key>
+Content-Type: application/json
+```
+
+```json
+{
+  "url": "ws://100.80.1.5:8443",
+  "fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "storage": {
+    "reserved_gb": 50,
+    "available_gb": 200
+  },
+  "version": "0.1.1",
+  "uptime_secs": 3600
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `url` | string | ✅ | WebSocket relay URL (`ws://` or `wss://` with explicit port) |
+| `fingerprint` | string | ✅ | 64-character hex SHA-256 TLS fingerprint |
+| `storage.reserved_gb` | uint64 | ✅ | Storage reserved for Goy network (GB) |
+| `storage.available_gb` | uint64 | ✅ | Currently available storage capacity (GB) |
+| `version` | string | ✅ | Goy Node software version (non-empty) |
+| `uptime_secs` | uint64 | No | Uptime of the relay process in seconds |
+
+**Response `200 OK`:**
+```json
+{
+  "node_id": "goy-node-760cada1b87b1d48",
+  "url": "ws://100.80.1.5:8443",
+  "fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "storage": {
+    "reserved_gb": 50,
+    "available_gb": 200
+  },
+  "replication_factor": 1,
+  "version": "0.1.1",
+  "uptime_secs": 3600,
+  "capabilities": ["nip09", "nip40"],
+  "last_seen": "2026-08-12T17:30:00Z"
+}
+```
+
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `400 Bad Request` | Invalid URL, invalid fingerprint format, missing storage, or empty version |
+| `401 Unauthorized` | Missing/invalid token or token ownership mismatch for `node_id` |
+| `404 Not Found` | Relay entry for this `node_id` does not exist |
+| `429 Too Many Requests` | IP rate limit exceeded |
+| `500 Internal Server Error` | Database write failure |
+
+---
+
 ### `DELETE /relays/{node_id}`
 
 Deregister a relay (hard delete). The node registration is preserved; only the relay entry is removed.

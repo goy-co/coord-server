@@ -72,8 +72,10 @@ func AuthMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
 			token := strings.TrimSpace(parts[1])
 			adminKey := cfg.Auth.AdminAPIKey
 
-			// Constant-time comparison to prevent timing attacks
-			if len(token) == 0 || subtle.ConstantTimeCompare([]byte(token), []byte(adminKey)) != 1 {
+			isAdmin := len(token) > 0 && subtle.ConstantTimeCompare([]byte(token), []byte(adminKey)) == 1
+			isNodeKeyFormat := strings.HasPrefix(token, "gc_") && len(token) >= 20
+
+			if !isAdmin && !isNodeKeyFormat {
 				slog.Warn("Authentication failed: invalid API key",
 					slog.String("path", path),
 					slog.String("remote_addr", r.RemoteAddr),
