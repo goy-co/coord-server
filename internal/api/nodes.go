@@ -1,11 +1,13 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -232,5 +234,103 @@ func GetVPNStatusHandler(vpnProvider vpn.VPNProvider) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(status)
+	}
+}
+
+// NodeStatusResponse represents the read-only status payload for GET /v1/nodes/{node_id}/status.
+type NodeStatusResponse struct {
+	NodeID     string          `json:"node_id"`
+	IsOnline   bool            `json:"is_online"`
+	LastSeen   *time.Time      `json:"last_seen"`
+	URL        string          `json:"url"`
+	Version    string          `json:"version"`
+	UptimeSecs uint64          `json:"uptime_secs"`
+	Storage    *StoragePayload `json:"storage"`
+}
+
+// IsNodeOnline calculates whether a node is online given its last_seen timestamp, current time, and threshold in seconds.
+func IsNodeOnline(lastSeen *time.Time, now time.Time, thresholdSecs int) bool {
+	if lastSeen == nil || lastSeen.IsZero() {
+		return false
+	}
+	if thresholdSecs <= 0 {
+		thresholdSecs = config.DefaultOnlineThresholdSeconds
+	}
+	cutoff := now.Add(-time.Duration(thresholdSecs) * time.Second)
+	return !lastSeen.Before(cutoff)
+}
+
+func authorizeAdminOnly(r *http.Request, cfg *config.Config) bool {
+	if !cfg.Auth.RequireAuth {
+		return true
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return false
+	}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return false
+	}
+	token := strings.TrimSpace(parts[1])
+	if token == "" || cfg.Auth.AdminAPIKey == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(token), []byte(cfg.Auth.AdminAPIKey)) == 1
+}
+
+// GetNodeStatusHandler handles the GET /v1/nodes/{node_id}/status request.
+func GetNodeStatusHandler(st store.Store, cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 1. Admin Auth Check (strictly require Admin API Key, reject node auth keys)
+		if !authorizeAdminOnly(r, cfg) {
+			WriteUnauthorized(w, "admin API key required")
+			return
+		}
+
+		nodeID := chi.URLParam(r, "node_id")
+		if nodeID == "" {
+			nodeID = chi.URLParam(r, "id")
+		}
+		if nodeID == "" {
+			WriteBadRequest(w, "missing node_id URL parameter")
+			return
+		}
+
+		relay, err := st.GetRelayByNodeID(r.Context(), nodeID)
+		if err != nil {
+			if errors.Is(err, store.ErrRelayNotFound) {
+				WriteNotFound(w, "node", nodeID)
+				return
+			}
+			slog.Error("Error looking up node relay for status", slog.String("node_id", nodeID), slog.String("error", err.Error()))
+			WriteInternalServerError(w)
+			return
+		}
+
+		var lastSeenPtr *time.Time
+		if !relay.LastSeenAt.IsZero() && relay.LastSeenAt.Year() > 1 {
+			t := relay.LastSeenAt.UTC()
+			lastSeenPtr = &t
+		}
+
+		isOnline := IsNodeOnline(lastSeenPtr, time.Now().UTC(), cfg.Registry.OnlineThresholdSeconds)
+
+		resp := NodeStatusResponse{
+			NodeID:     relay.NodeID,
+			IsOnline:   isOnline,
+			LastSeen:   lastSeenPtr,
+			URL:        relay.URL,
+			Version:    relay.Version,
+			UptimeSecs: relay.UptimeSecs,
+			Storage: &StoragePayload{
+				ReservedGB:  relay.StorageReservedGB,
+				AvailableGB: relay.StorageAvailableGB,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }

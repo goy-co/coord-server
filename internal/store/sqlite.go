@@ -536,9 +536,6 @@ func scanRelay(scanner interface{ Scan(dest ...any) error }) (*Relay, error) {
 
 func (s *SQLiteStore) UpsertRelay(ctx context.Context, relay *Relay) error {
 	now := time.Now().UTC()
-	if relay.LastSeenAt.IsZero() {
-		relay.LastSeenAt = now
-	}
 	if relay.CreatedAt.IsZero() {
 		relay.CreatedAt = now
 	}

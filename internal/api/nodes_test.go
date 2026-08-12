@@ -402,3 +402,256 @@ func TestNodeRegisterVPNIntegration(t *testing.T) {
 		}
 	})
 }
+
+func TestIsNodeOnline(t *testing.T) {
+	now := time.Date(2026, 8, 12, 18, 0, 0, 0, time.UTC)
+	threshold := 180
+
+	t.Run("Nil LastSeen", func(t *testing.T) {
+		if api.IsNodeOnline(nil, now, threshold) {
+			t.Errorf("Expected false for nil lastSeen")
+		}
+	})
+
+	t.Run("Zero LastSeen", func(t *testing.T) {
+		zero := time.Time{}
+		if api.IsNodeOnline(&zero, now, threshold) {
+			t.Errorf("Expected false for zero lastSeen")
+		}
+	})
+
+	t.Run("Recent LastSeen (Online)", func(t *testing.T) {
+		recent := now.Add(-30 * time.Second)
+		if !api.IsNodeOnline(&recent, now, threshold) {
+			t.Errorf("Expected true for recent lastSeen")
+		}
+	})
+
+	t.Run("Exact Threshold Boundary (Online at second N)", func(t *testing.T) {
+		exact := now.Add(-time.Duration(threshold) * time.Second)
+		if !api.IsNodeOnline(&exact, now, threshold) {
+			t.Errorf("Expected true for exact threshold boundary")
+		}
+	})
+
+	t.Run("Past Threshold Boundary (Offline at second N+1)", func(t *testing.T) {
+		past := now.Add(-time.Duration(threshold+1) * time.Second)
+		if api.IsNodeOnline(&past, now, threshold) {
+			t.Errorf("Expected false for past threshold boundary")
+		}
+	})
+
+	t.Run("Invalid Threshold Uses Default (180s)", func(t *testing.T) {
+		recent := now.Add(-100 * time.Second)
+		if !api.IsNodeOnline(&recent, now, 0) {
+			t.Errorf("Expected true with 0 threshold falling back to default 180s")
+		}
+
+		old := now.Add(-200 * time.Second)
+		if api.IsNodeOnline(&old, now, -5) {
+			t.Errorf("Expected false with negative threshold falling back to default 180s")
+		}
+	})
+}
+
+func TestGetNodeStatusEndpoint(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_api_node_status.db")
+
+	st := store.NewSQLiteStore(dbPath)
+	ctx := context.Background()
+
+	if err := st.Init(ctx); err != nil {
+		t.Fatalf("Failed to initialize SQLiteStore: %v", err)
+	}
+	defer st.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Auth.RequireAuth = true
+	cfg.Auth.AdminAPIKey = "admin-secret-key"
+	cfg.Registry.OnlineThresholdSeconds = 180
+
+	router := api.NewRouter(cfg, st, time.Now(), vpn.NewNoopVPNProvider(), nil)
+
+	now := time.Now().UTC()
+
+	// Seed relays in DB
+	onlineRelay := &store.Relay{
+		NodeID:             "goy-node-online-123",
+		URL:                "ws://100.80.1.5:8443",
+		Version:            "0.1.1",
+		UptimeSecs:         3600,
+		StorageReservedGB:  50,
+		StorageAvailableGB: 200,
+		Fingerprint:        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		LastSeenAt:         now.Add(-30 * time.Second),
+		CreatedAt:          now.Add(-1 * time.Hour),
+		UpdatedAt:          now.Add(-30 * time.Second),
+	}
+	if err := st.UpsertRelay(ctx, onlineRelay); err != nil {
+		t.Fatalf("Failed to seed online relay: %v", err)
+	}
+
+	offlineRelay := &store.Relay{
+		NodeID:             "goy-node-offline-456",
+		URL:                "ws://100.80.1.6:8443",
+		Version:            "0.1.0",
+		UptimeSecs:         1200,
+		StorageReservedGB:  50,
+		StorageAvailableGB: 100,
+		Fingerprint:        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		LastSeenAt:         now.Add(-600 * time.Second),
+		CreatedAt:          now.Add(-2 * time.Hour),
+		UpdatedAt:          now.Add(-600 * time.Second),
+	}
+	if err := st.UpsertRelay(ctx, offlineRelay); err != nil {
+		t.Fatalf("Failed to seed offline relay: %v", err)
+	}
+
+	neverRelay := &store.Relay{
+		NodeID:             "goy-node-never-789",
+		URL:                "ws://100.80.1.7:8443",
+		Version:            "0.1.1",
+		UptimeSecs:         0,
+		StorageReservedGB:  50,
+		StorageAvailableGB: 50,
+		Fingerprint:        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		LastSeenAt:         time.Time{},
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	if err := st.UpsertRelay(ctx, neverRelay); err != nil {
+		t.Fatalf("Failed to seed never-seen relay: %v", err)
+	}
+
+	t.Run("Happy Path - Online Node", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/nodes/goy-node-online-123/status", nil)
+		req.Header.Set("Authorization", "Bearer admin-secret-key")
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Expected 200 OK, got: %d (body: %s)", rec.Code, rec.Body.String())
+		}
+
+		var resp api.NodeStatusResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to decode JSON: %v", err)
+		}
+
+		if resp.NodeID != "goy-node-online-123" {
+			t.Errorf("Expected node_id 'goy-node-online-123', got: '%s'", resp.NodeID)
+		}
+		if !resp.IsOnline {
+			t.Errorf("Expected is_online true")
+		}
+		if resp.LastSeen == nil {
+			t.Errorf("Expected last_seen non-nil")
+		}
+		if resp.URL != "ws://100.80.1.5:8443" || resp.Version != "0.1.1" || resp.UptimeSecs != 3600 {
+			t.Errorf("Unexpected relay metadata fields: %+v", resp)
+		}
+		if resp.Storage == nil || resp.Storage.ReservedGB != 50 || resp.Storage.AvailableGB != 200 {
+			t.Errorf("Unexpected storage fields: %+v", resp.Storage)
+		}
+	})
+
+	t.Run("Offline Node (> 180s ago)", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/nodes/goy-node-offline-456/status", nil)
+		req.Header.Set("Authorization", "Bearer admin-secret-key")
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Expected 200 OK, got: %d", rec.Code)
+		}
+
+		var resp api.NodeStatusResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to decode JSON: %v", err)
+		}
+
+		if resp.NodeID != "goy-node-offline-456" {
+			t.Errorf("Expected node_id 'goy-node-offline-456', got: '%s'", resp.NodeID)
+		}
+		if resp.IsOnline {
+			t.Errorf("Expected is_online false")
+		}
+		if resp.LastSeen == nil {
+			t.Errorf("Expected last_seen non-nil for offline node")
+		}
+	})
+
+	t.Run("Never Seen Node (LastSeen Zero)", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/nodes/goy-node-never-789/status", nil)
+		req.Header.Set("Authorization", "Bearer admin-secret-key")
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Expected 200 OK, got: %d", rec.Code)
+		}
+
+		var resp api.NodeStatusResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("Failed to decode JSON: %v", err)
+		}
+
+		if resp.IsOnline {
+			t.Errorf("Expected is_online false for never seen node")
+		}
+		if resp.LastSeen != nil {
+			t.Errorf("Expected last_seen null for never seen node, got: %v", resp.LastSeen)
+		}
+	})
+
+	t.Run("Nonexistent Node -> 404 Not Found", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/nodes/goy-node-unknown/status", nil)
+		req.Header.Set("Authorization", "Bearer admin-secret-key")
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("Expected 404 Not Found, got: %d", rec.Code)
+		}
+	})
+
+	t.Run("Unauthorized - Missing Authorization Header", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/nodes/goy-node-online-123/status", nil)
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("Expected 401 Unauthorized for missing header, got: %d", rec.Code)
+		}
+	})
+
+	t.Run("Unauthorized - Wrong Admin Key", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/nodes/goy-node-online-123/status", nil)
+		req.Header.Set("Authorization", "Bearer wrong-key")
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("Expected 401 Unauthorized for invalid key, got: %d", rec.Code)
+		}
+	})
+
+	t.Run("Unauthorized - Rejects Node Auth Key (gc_...)", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/nodes/goy-node-online-123/status", nil)
+		req.Header.Set("Authorization", "Bearer gc_test_node_key_1234567890")
+		rec := httptest.NewRecorder()
+
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("Expected 401 Unauthorized when presenting node auth key instead of admin key, got: %d", rec.Code)
+		}
+	})
+}

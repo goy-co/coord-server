@@ -215,6 +215,65 @@ Authorization: Bearer <COORD_ADMIN_API_KEY>
 
 ---
 
+### `GET /v1/nodes/{node_id}/status`
+
+Retrieve real-time online/offline status, last activity timestamp, software version, uptime, and storage metrics for a node.
+
+> **Administrative Authorization:** Strictly requires `COORD_ADMIN_API_KEY`. Node auth keys (`gc_...`) are rejected with `401 Unauthorized`.
+
+**Request:**
+```http
+GET /v1/nodes/goy-node-63898b5aaee9bb45/status
+Authorization: Bearer <COORD_ADMIN_API_KEY>
+```
+
+**Response `200 OK`:**
+```json
+{
+  "node_id": "goy-node-63898b5aaee9bb45",
+  "is_online": true,
+  "last_seen": "2026-08-12T17:58:30Z",
+  "url": "ws://100.80.1.5:8443",
+  "version": "0.1.1",
+  "uptime_secs": 3600,
+  "storage": {
+    "reserved_gb": 50,
+    "available_gb": 200
+  }
+}
+```
+
+If the node has never sent a heartbeat or advertised activity, `last_seen` will be `null` and `is_online` will be `false`:
+```json
+{
+  "node_id": "goy-node-63898b5aaee9bb45",
+  "is_online": false,
+  "last_seen": null,
+  "url": "",
+  "version": "",
+  "uptime_secs": 0,
+  "storage": {
+    "reserved_gb": 0,
+    "available_gb": 0
+  }
+}
+```
+
+**Online Logic (`is_online`):**
+A node is considered online (`is_online = true`) if:
+1. `last_seen` is non-null AND
+2. `(now - last_seen) <= registry.online_threshold_seconds` (default: 180s = 3× 60s heartbeat interval).
+
+**Error Responses:**
+
+| Code | Condition |
+|---|---|
+| `401 Unauthorized` | Missing token, invalid token, or node auth key (`gc_...`) presented |
+| `404 Not Found` | Node ID does not exist |
+| `429 Too Many Requests` | IP rate limit exceeded |
+
+---
+
 ### `DELETE /v1/nodes/{id}`
 
 Soft-delete a node (sets `status = "deleted"`). The node's relay entry is also removed from the registry.

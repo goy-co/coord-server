@@ -68,6 +68,7 @@ type RegistryConfig struct {
 	RelayTTLSeconds          int `toml:"relay_ttl_seconds"`
 	DiscoveryCacheTTLSeconds int `toml:"discovery_cache_ttl_seconds"`
 	MaxRelaysPerResponse     int `toml:"max_relays_per_response"`
+	OnlineThresholdSeconds   int `toml:"online_threshold_seconds"`
 }
 
 // Config aggregates all configuration sections of coord-server.
@@ -97,6 +98,7 @@ const (
 	DefaultRelayTTLSeconds              = 300
 	DefaultDiscoveryCacheTTLSeconds     = 15
 	DefaultMaxRelaysPerResponse         = 100
+	DefaultOnlineThresholdSeconds       = 180
 	DefaultHeadscaleUser                = "goy-nodes"
 	DefaultTailscaleKeyExpiryHours     = 24
 	DefaultTailscaleKeyReusable        = false
@@ -152,6 +154,7 @@ func DefaultConfig() *Config {
 			RelayTTLSeconds:          DefaultRelayTTLSeconds,
 			DiscoveryCacheTTLSeconds: DefaultDiscoveryCacheTTLSeconds,
 			MaxRelaysPerResponse:     DefaultMaxRelaysPerResponse,
+			OnlineThresholdSeconds:   DefaultOnlineThresholdSeconds,
 		},
 	}
 }
@@ -240,6 +243,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Registry.MaxRelaysPerResponse <= 0 {
 		cfg.Registry.MaxRelaysPerResponse = DefaultMaxRelaysPerResponse
+	}
+	if cfg.Registry.OnlineThresholdSeconds <= 0 {
+		cfg.Registry.OnlineThresholdSeconds = DefaultOnlineThresholdSeconds
 	}
 }
 
@@ -346,6 +352,11 @@ func applyEnvOverrides(cfg *Config) {
 	if envDiscoveryCacheTTL := os.Getenv("COORD_DISCOVERY_CACHE_TTL"); envDiscoveryCacheTTL != "" {
 		if val, err := strconv.Atoi(envDiscoveryCacheTTL); err == nil && val > 0 {
 			cfg.Registry.DiscoveryCacheTTLSeconds = val
+		}
+	}
+	if envOnlineThreshold := os.Getenv("COORD_ONLINE_THRESHOLD_SECS"); envOnlineThreshold != "" {
+		if val, err := strconv.Atoi(envOnlineThreshold); err == nil && val > 0 {
+			cfg.Registry.OnlineThresholdSeconds = val
 		}
 	}
 }

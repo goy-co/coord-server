@@ -42,6 +42,7 @@ func NewRouter(cfg *config.Config, st store.Store, startTime time.Time, vpnProvi
 		// Nodes Routes (/v1/nodes/*)
 		r.Route("/v1/nodes", func(r chi.Router) {
 			r.Post("/register", RegisterNodeHandler(st, cfg, vpnProvider))
+			r.Get("/{node_id}/status", GetNodeStatusHandler(st, cfg))
 			r.Get("/{id}", GetNodeHandler(st))
 			r.Delete("/{id}", DeleteNodeHandler(st))
 		})
