@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/goy-co/coord-server/internal/vpn"
 )
@@ -172,6 +173,24 @@ func TestTailscaleClient_GetStatus(t *testing.T) {
 	}
 	if status.RegisteredDevices != 2 {
 		t.Errorf("Expected RegisteredDevices 2, got %d", status.RegisteredDevices)
+	}
+}
+
+func TestHealthCheck_Timeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+	}))
+	defer server.Close()
+
+	client := vpn.NewTailscaleClient("my-org.ts.net", "test-key", "")
+	setTailscaleBaseURL(client, server.URL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	err := client.HealthCheck(ctx)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
 	}
 }
 
