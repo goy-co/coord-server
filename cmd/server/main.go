@@ -20,7 +20,15 @@ import (
 )
 
 func main() {
-	configPathFlag := flag.String("config", "config.toml", "Path to TOML configuration file")
+	configPathFlag := flag.String("config", "", "Path to TOML configuration file")
+	bindFlag := flag.String("bind", "", "HTTP server listen address (e.g. 0.0.0.0:8080)")
+	adminKeyFlag := flag.String("admin-api-key", "", "Administrator API key")
+	vpnProviderFlag := flag.String("vpn-provider", "", "VPN provider (tailscale, headscale, or empty)")
+	dbPathFlag := flag.String("db-path", "", "Path to SQLite database file")
+	logLevelFlag := flag.String("log-level", "", "Logging level (trace, debug, info, warn, error)")
+	logFormatFlag := flag.String("log-format", "", "Logging format (pretty, json)")
+	generateConfigFlag := flag.Bool("generate-config", false, "Generate default config file and exit")
+	validateConfigFlag := flag.Bool("validate-config", false, "Validate configuration and exit")
 	versionFlag := flag.Bool("version", false, "Display application version and exit")
 	flag.Parse()
 
@@ -29,14 +37,47 @@ func main() {
 		os.Exit(0)
 	}
 
+	if *generateConfigFlag {
+		targetPath := *configPathFlag
+		if targetPath == "" {
+			targetPath = config.DefaultConfigPath()
+		}
+		if err := config.GenerateDefault(targetPath); err != nil {
+			slog.Error("Failed to generate default configuration", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		fmt.Printf("Default configuration generated at: %s\n", targetPath)
+		os.Exit(0)
+	}
+
 	startTime := time.Now()
 
-	// 1. Load configuration
-	cfg, err := config.Load(*configPathFlag)
+	// 1. Resolve configuration with priority cascade
+	resolved, err := config.Resolve(config.ResolveOptions{
+		ConfigPath:   *configPathFlag,
+		Bind:         *bindFlag,
+		AdminAPIKey:  *adminKeyFlag,
+		VPNProvider:  *vpnProviderFlag,
+		DBPath:       *dbPathFlag,
+		LogLevel:     *logLevelFlag,
+		LogFormat:    *logFormatFlag,
+		ValidateOnly: *validateConfigFlag,
+	})
 	if err != nil {
-		slog.Error("Failed to load configuration", slog.String("error", err.Error()))
+		slog.Error("Configuration resolution failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+
+	for _, w := range resolved.Warnings {
+		slog.Warn(w)
+	}
+
+	if *validateConfigFlag {
+		fmt.Println("Configuration is valid.")
+		os.Exit(0)
+	}
+
+	cfg := resolved.Config
 
 	if !cfg.Auth.RequireAuth {
 		slog.Warn("WARNING: Authentication disabled (require_auth = false). Do not use in production!")

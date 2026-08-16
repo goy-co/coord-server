@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
@@ -63,6 +64,30 @@ func GenerateDefault(path string) error {
 
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		return fmt.Errorf("failed to write config at %s: %w", path, err)
+	}
+
+	return nil
+}
+
+// WriteConfig serializa e escreve a configuração para o path especificado com permissões 0600.
+func WriteConfig(path string, cfg *Config) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	header := "# Goy Coord-Server Configuration\n" +
+		"# Auto-generated on first run.\n" +
+		"# Edit manually or re-run with flags to update.\n\n"
+
+	var buf bytes.Buffer
+	buf.WriteString(header)
+	if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
+		return fmt.Errorf("failed to serialize config: %w", err)
+	}
+
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
 	}
 
 	return nil
