@@ -209,11 +209,12 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// DefaultConfigPath retorna o path canónico do config.toml.
+// DefaultConfigPath retorna o path canónico do config.toml (~/.config/goy-coord/config.toml).
 func DefaultConfigPath() string {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return filepath.Join(".", "config.toml")
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, ".config", "goy-coord", "config.toml")
 	}
 	return filepath.Join(configDir, "goy-coord", "config.toml")
 }

@@ -15,12 +15,13 @@ import (
 	"github.com/goy-co/coord-server/internal/config"
 	"github.com/goy-co/coord-server/internal/jobs"
 	"github.com/goy-co/coord-server/internal/middleware"
+	"github.com/goy-co/coord-server/internal/startup"
 	"github.com/goy-co/coord-server/internal/store"
 	"github.com/goy-co/coord-server/internal/vpn"
 )
 
 func main() {
-	configPathFlag := flag.String("config", "", "Path to TOML configuration file")
+	configPathFlag := flag.String("config", config.DefaultConfigPath(), "Path to TOML configuration file (default: ~/.config/goy-coord/config.toml)")
 	bindFlag := flag.String("bind", "", "HTTP server listen address (e.g. 0.0.0.0:8080)")
 	adminKeyFlag := flag.String("admin-api-key", "", "Administrator API key")
 	vpnProviderFlag := flag.String("vpn-provider", "", "VPN provider (tailscale, headscale, or empty)")
@@ -93,8 +94,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	slog.Info("SQLite database initialized successfully", slog.String("path", cfg.Database.Path))
-
 	// 3. Initialize VPN Provider
 	vpnProvider, err := vpn.NewVPNProvider(&cfg.VPN)
 	if err != nil {
@@ -102,13 +101,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cfg.VPN.Enabled && cfg.VPN.Provider != "" {
-		slog.Info("VPN integration enabled", slog.String("provider", vpnProvider.ProviderName()))
-	} else {
-		slog.Info("VPN integration disabled (using NoopVPNProvider)")
+	// 4. Run Startup Component Checks and Print Status Banner
+	statuses := startup.RunChecks(*configPathFlag, cfg, st, vpnProvider)
+	startup.PrintBanner(api.ServerVersion, cfg.Server.Bind, statuses)
+
+	for _, s := range statuses {
+		if !s.OK && (s.Name == "Database" || s.Name == "Auth") {
+			slog.Error("Critical component check failed, exiting", slog.String("component", s.Name), slog.String("warning", s.Warning))
+			os.Exit(1)
+		}
 	}
 
-	// 4. Initialize Rate Limiter
+	// 5. Initialize Rate Limiter
 	rateLimiter := middleware.NewIPRateLimiter()
 	defer rateLimiter.Close()
 

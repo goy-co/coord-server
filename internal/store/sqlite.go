@@ -856,3 +856,15 @@ func (s *SQLiteStore) CleanupStaleRelays(ctx context.Context, ttlSeconds int) (i
 
 	return int(markedUnreachable), int(deletedExpired), nil
 }
+
+// TableCount returns the number of non-internal tables in the SQLite database.
+func (s *SQLiteStore) TableCount() (int, error) {
+	if s.db == nil {
+		return 0, errors.New("database not initialized")
+	}
+	var count int
+	err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+	).Scan(&count)
+	return count, err
+}
