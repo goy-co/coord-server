@@ -151,3 +151,37 @@ func TestPrintBanner_Formatting(t *testing.T) {
 		t.Error("banner missing degraded warning")
 	}
 }
+
+func TestBanner_VPNDisabledVsUnconfigured(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+	_ = os.WriteFile(cfgPath, []byte("# test config"), 0o600)
+
+	// Caso 1: VPN disabled (sem provider)
+	cfgDisabled := config.Defaults()
+	cfgDisabled.VPN.Provider = ""
+	cfgDisabled.Auth.AdminAPIKey = "valid_key"
+
+	statusesDisabled := RunChecks(cfgPath, cfgDisabled, newTestDB(t), nil)
+	vpnStatusDisabled := findStatus(statusesDisabled, "VPN")
+	if vpnStatusDisabled == nil || !vpnStatusDisabled.OK {
+		t.Error("expected VPN to be OK when provider is disabled")
+	}
+	if !strings.Contains(vpnStatusDisabled.Details, "disabled") {
+		t.Errorf("expected details to contain 'disabled', got: %s", vpnStatusDisabled.Details)
+	}
+
+	// Caso 2: VPN provider configurado mas nil
+	cfgUnconfigured := config.Defaults()
+	cfgUnconfigured.VPN.Provider = "tailscale"
+	cfgUnconfigured.Auth.AdminAPIKey = "valid_key"
+
+	statusesUnconfigured := RunChecks(cfgPath, cfgUnconfigured, newTestDB(t), nil)
+	vpnStatusUnconfigured := findStatus(statusesUnconfigured, "VPN")
+	if vpnStatusUnconfigured == nil || vpnStatusUnconfigured.OK {
+		t.Error("expected VPN to be not OK when provider interface is nil")
+	}
+	if !strings.Contains(vpnStatusUnconfigured.Warning, "nil") {
+		t.Errorf("expected warning to mention 'nil', got: %s", vpnStatusUnconfigured.Warning)
+	}
+}
