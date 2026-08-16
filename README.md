@@ -50,62 +50,53 @@ curl http://localhost:8080/health
 
 ## Configuration
 
-The server loads configuration from a TOML file (`--config config.toml` by default).
-**Secrets are never read from TOML** — always use environment variables.
+The server loads configuration from a canonical TOML file (`~/.config/goy-coord/config.toml` by default, customizable via `--config <path>`).
 
-### Full `config.toml` Reference
+### Unified `config.toml` Reference
 
 ```toml
 [server]
-listen               = "0.0.0.0:8080"   # bind address
-read_timeout_seconds  = 15
+bind = "0.0.0.0:8080"
+read_timeout_seconds = 15
 write_timeout_seconds = 15
 
-[database]
-path = "data/coord-server.db"           # SQLite WAL file
-
 [auth]
-require_auth = true                      # set false only for local dev
+admin_api_key = "your_admin_api_key"
+require_auth = true
 public_paths = ["/health", "/info", "/metrics"]
 
+[database]
+path = "/var/lib/goy-coord/coord.db"
+
 [vpn]
-enabled                  = false         # set true when Headscale is available
-headscale_api_url        = "https://vpn.example.com/api/v1"
-headscale_user           = "goy-nodes"
-preauth_key_expiry_hours = 24
-preauth_key_reusable     = false
+provider = "tailscale" # "tailscale" | "headscale" | ""
+tailscale_api_key = "tskey-api-..."
+tailscale_tailnet = "example.com"
+tailscale_tag = "tag:goy-node"
 
-[rate_limit]
-requests_per_minute = 60    # global per-IP limit
-burst               = 10    # burst allowance
-heartbeat_rpm       = 120   # relaxed limit for PUT /relays/{id}
+[ratelimit]
+requests_per_minute = 60
 
-[registry]
-relay_ttl_seconds           = 300   # relay considered stale after 5 min without heartbeat
-discovery_cache_ttl_seconds = 15    # GET /relays cache TTL
-max_relays_per_response     = 100
-
-[jobs]
-cleanup_relays_interval_seconds = 60    # run stale relay cleanup every 60s
-cleanup_nodes_interval_seconds  = 300   # run inactive node cleanup every 5 min
-node_inactive_threshold_hours   = 24    # mark node inactive after 24h without contact
+[log]
+level = "info"
+format = "json"
 ```
 
-### Environment Variables
+---
 
-Secrets and runtime overrides. **These always take precedence over config.toml.**
+## 🔄 Environment Variables Deprecation (v0.2.0 → v0.3.0)
 
-| Variable | Description | Default |
-|---|---|---|
-| `COORD_ADMIN_API_KEY` | Bearer token for protected endpoints | *(required if `require_auth = true`)* |
-| `COORD_AUTH_SECRET` | HMAC secret for auth key validation | `""` |
-| `COORD_HEADSCALE_API_KEY` | Headscale API key | `""` |
-| `COORD_LISTEN` | Override `server.listen` | `0.0.0.0:8080` |
-| `COORD_DB_PATH` | Override `database.path` | `data/coord-server.db` |
-| `COORD_RELAY_TTL` | Override `registry.relay_ttl_seconds` | `300` |
-| `COORD_DISCOVERY_CACHE_TTL` | Override `registry.discovery_cache_ttl_seconds` | `15` |
-| `COORD_CLEANUP_RELAYS_INTERVAL` | Override `jobs.cleanup_relays_interval_seconds` | `60` |
-| `COORD_CLEANUP_NODES_INTERVAL` | Override `jobs.cleanup_nodes_interval_seconds` | `300` |
+Environment variables are supported for backward compatibility in v0.2.0, but are **deprecated** and will be removed in **v0.3.0**. Please migrate to `~/.config/goy-coord/config.toml` or use CLI flags.
+
+| Variable | Replacement in `config.toml` | Alternative CLI Flag | Removal |
+|---|---|---|---|
+| `COORD_BIND` | `[server] bind` | `--bind` | v0.3.0 |
+| `COORD_ADMIN_API_KEY` | `[auth] admin_api_key` | `--admin-api-key` | v0.3.0 |
+| `COORD_DB_PATH` | `[database] path` | `--db-path` | v0.3.0 |
+| `COORD_VPN_PROVIDER` | `[vpn] provider` | `--vpn-provider` | v0.3.0 |
+| `COORD_TAILSCALE_API_KEY` | `[vpn] tailscale_api_key` | *(none)* | v0.3.0 |
+| `COORD_HEADSCALE_URL` | `[vpn] headscale_url` | *(none)* | v0.3.0 |
+| `COORD_LOG_LEVEL` | `[log] level` | `--log-level` | v0.3.0 |
 
 ---
 

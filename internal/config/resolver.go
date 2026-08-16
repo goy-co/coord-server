@@ -120,31 +120,45 @@ func Resolve(opts ResolveOptions) (*ResolvedConfig, error) {
 }
 
 var resolverEnvMappings = []struct {
-	envVar string
-	field  string
-	apply  func(cfg *Config, value string)
+	envVar  string
+	field   string
+	cliFlag string
+	apply   func(cfg *Config, value string)
 }{
-	{"COORD_BIND", "server.bind", func(c *Config, v string) { c.Server.Bind = v; c.Server.Listen = v }},
-	{"COORD_LISTEN", "server.bind", func(c *Config, v string) { c.Server.Bind = v; c.Server.Listen = v }},
-	{"COORD_ADMIN_API_KEY", "auth.admin_api_key", func(c *Config, v string) { c.Auth.AdminAPIKey = v }},
-	{"COORD_DB_PATH", "database.path", func(c *Config, v string) { c.Database.Path = v }},
-	{"COORD_VPN_PROVIDER", "vpn.provider", func(c *Config, v string) { c.VPN.Provider = v }},
-	{"COORD_TAILSCALE_API_KEY", "vpn.tailscale_api_key", func(c *Config, v string) { c.VPN.TailscaleAPIKey = v }},
-	{"COORD_HEADSCALE_URL", "vpn.headscale_url", func(c *Config, v string) { c.VPN.HeadscaleURL = v; c.VPN.HeadscaleAPIURL = v }},
-	{"COORD_LOG_LEVEL", "log.level", func(c *Config, v string) { c.Log.Level = v }},
-	{"COORD_LOG_FORMAT", "log.format", func(c *Config, v string) { c.Log.Format = v }},
+	{"COORD_BIND", "server.bind", "--bind", func(c *Config, v string) { c.Server.Bind = v; c.Server.Listen = v }},
+	{"COORD_LISTEN", "server.bind", "--bind", func(c *Config, v string) { c.Server.Bind = v; c.Server.Listen = v }},
+	{"COORD_ADMIN_API_KEY", "auth.admin_api_key", "--admin-api-key", func(c *Config, v string) { c.Auth.AdminAPIKey = v }},
+	{"COORD_DB_PATH", "database.path", "--db-path", func(c *Config, v string) { c.Database.Path = v }},
+	{"COORD_VPN_PROVIDER", "vpn.provider", "--vpn-provider", func(c *Config, v string) { c.VPN.Provider = v }},
+	{"COORD_TAILSCALE_API_KEY", "vpn.tailscale_api_key", "(none)", func(c *Config, v string) { c.VPN.TailscaleAPIKey = v }},
+	{"COORD_HEADSCALE_URL", "vpn.headscale_url", "(none)", func(c *Config, v string) { c.VPN.HeadscaleURL = v; c.VPN.HeadscaleAPIURL = v }},
+	{"COORD_LOG_LEVEL", "log.level", "--log-level", func(c *Config, v string) { c.Log.Level = v }},
+	{"COORD_LOG_FORMAT", "log.format", "--log-format", func(c *Config, v string) { c.Log.Format = v }},
 }
 
 func applyEnvOverridesWithSources(cfg *Config, sources map[string]ConfigSource, warnings *[]string) {
+	configPath := DefaultConfigPath()
 	for _, m := range resolverEnvMappings {
 		value, ok := os.LookupEnv(m.envVar)
 		if !ok || strings.TrimSpace(value) == "" {
 			continue
 		}
 
+		parts := strings.Split(m.field, ".")
+		section := parts[0]
+		key := parts[0]
+		if len(parts) > 1 {
+			key = parts[1]
+		}
+
 		warning := fmt.Sprintf(
-			"⚠️  %s is deprecated. Use [%s] in config.toml or the corresponding CLI flag.",
-			m.envVar, strings.Split(m.field, ".")[0],
+			"⚠️  DEPRECATED: %s=%s\n"+
+				"   This env var will be removed in v0.3.0.\n"+
+				"   Migrate now:  edit %s → [%s] %s\n"+
+				"   Or use flag:  %s %s",
+			m.envVar, maskSecret(value),
+			configPath, section, key,
+			m.cliFlag, value,
 		)
 		slog.Warn(warning)
 		*warnings = append(*warnings, warning)

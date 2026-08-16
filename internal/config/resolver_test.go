@@ -196,3 +196,52 @@ format = "json"
 		t.Error("disk config should not be overwritten")
 	}
 }
+
+func TestResolve_DeprecationWarningContainsActionableDetails(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+	_ = os.WriteFile(cfgPath, []byte(`
+[server]
+bind = "0.0.0.0:8080"
+[auth]
+admin_api_key = "file_key"
+[database]
+path = "/tmp/test.db"
+[vpn]
+provider = ""
+[ratelimit]
+requests_per_minute = 60
+[log]
+level = "info"
+format = "json"
+`), 0o644)
+
+	t.Setenv("COORD_ADMIN_API_KEY", "secret_env_key_123")
+
+	resolved, err := Resolve(ResolveOptions{ConfigPath: cfgPath})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var foundWarning string
+	for _, w := range resolved.Warnings {
+		if strings.Contains(w, "COORD_ADMIN_API_KEY") {
+			foundWarning = w
+			break
+		}
+	}
+
+	if foundWarning == "" {
+		t.Fatal("expected deprecation warning for COORD_ADMIN_API_KEY")
+	}
+
+	if !strings.Contains(foundWarning, "v0.3.0") {
+		t.Errorf("expected warning to mention v0.3.0, got: %s", foundWarning)
+	}
+	if !strings.Contains(foundWarning, "--admin-api-key") {
+		t.Errorf("expected warning to mention --admin-api-key, got: %s", foundWarning)
+	}
+	if !strings.Contains(foundWarning, "config.toml") {
+		t.Errorf("expected warning to mention config.toml, got: %s", foundWarning)
+	}
+}
