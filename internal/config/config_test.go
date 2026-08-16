@@ -26,7 +26,10 @@ func TestLoadDefaults(t *testing.T) {
 	os.Unsetenv("COORD_DISCOVERY_CACHE_TTL")
 
 	tempDir := t.TempDir()
-	configPath := filepath.Join(tempDir, "non_existent_config.toml")
+	configPath := filepath.Join(tempDir, "config.toml")
+	if err := config.GenerateDefault(configPath); err != nil {
+		t.Fatalf("GenerateDefault failed: %v", err)
+	}
 
 	t.Setenv("COORD_ADMIN_API_KEY", "default-test-admin-key")
 
@@ -68,6 +71,9 @@ func TestLoadEnvOverrides(t *testing.T) {
 
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.toml")
+	if err := config.GenerateDefault(configPath); err != nil {
+		t.Fatalf("GenerateDefault failed: %v", err)
+	}
 
 	cfg, err := config.Load(configPath)
 	if err != nil {

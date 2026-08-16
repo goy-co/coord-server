@@ -1,90 +1,14 @@
 package config
 
 import (
-	"errors"
-	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
-
-	"github.com/pelletier/go-toml/v2"
 )
-
-// ServerConfig holds network and timeout definitions for the HTTP server.
-type ServerConfig struct {
-	Listen              string `toml:"listen"`
-	ReadTimeoutSeconds  int    `toml:"read_timeout_seconds"`
-	WriteTimeoutSeconds int    `toml:"write_timeout_seconds"`
-}
-
-// DatabaseConfig holds data persistence definitions.
-type DatabaseConfig struct {
-	Path string `toml:"path"`
-}
-
-// AuthConfig holds keys and authentication rules for the API.
-type AuthConfig struct {
-	RequireAuth bool     `toml:"require_auth"`
-	AdminAPIKey string   `toml:"-"` // Never read from TOML, only via env var COORD_ADMIN_API_KEY
-	HMACSecret  string   `toml:"-"` // Never read from TOML, only via env var COORD_AUTH_SECRET
-	PublicPaths []string `toml:"public_paths"`
-}
-
-// VPNConfig holds parameters for integration with Tailscale or Headscale VPN control planes.
-type VPNConfig struct {
-	Enabled                 bool   `toml:"enabled"`
-	Provider                string `toml:"provider"`
-	TailscaleAPIKey         string `toml:"-"` // Never read from TOML, only via env var COORD_TAILSCALE_API_KEY
-	TailscaleTailnet        string `toml:"tailscale_tailnet"`
-	TailscaleTag            string `toml:"tailscale_tag"`
-	TailscaleKeyExpiryHours int    `toml:"tailscale_key_expiry_hours"`
-	TailscaleKeyReusable    bool   `toml:"tailscale_key_reusable"`
-	HeadscaleAPIURL         string `toml:"headscale_api_url"`
-	HeadscaleAPIKey         string `toml:"-"` // Never read from TOML, only via env var COORD_HEADSCALE_API_KEY
-	HeadscaleUser           string `toml:"headscale_user"`
-	HeadscaleKeyExpiryHours int    `toml:"headscale_key_expiry_hours"`
-	HeadscaleKeyReusable    bool   `toml:"headscale_key_reusable"`
-}
-
-// RateLimitConfig holds HTTP request rate limiting rules.
-type RateLimitConfig struct {
-	RequestsPerMinute int `toml:"requests_per_minute"`
-	Burst             int `toml:"burst"`
-	HeartbeatRPM      int `toml:"heartbeat_rpm"`
-}
-
-// JobsConfig holds execution intervals for background maintenance jobs.
-type JobsConfig struct {
-	CleanupRelaysIntervalSeconds int `toml:"cleanup_relays_interval_seconds"`
-	CleanupNodesIntervalSeconds  int `toml:"cleanup_nodes_interval_seconds"`
-	StatsRefreshIntervalSeconds  int `toml:"stats_refresh_interval_seconds"`
-	NodeInactiveThresholdHours   int `toml:"node_inactive_threshold_hours"`
-}
-
-// RegistryConfig holds definitions for the relay discovery service.
-type RegistryConfig struct {
-	RelayTTLSeconds          int `toml:"relay_ttl_seconds"`
-	DiscoveryCacheTTLSeconds int `toml:"discovery_cache_ttl_seconds"`
-	MaxRelaysPerResponse     int `toml:"max_relays_per_response"`
-	OnlineThresholdSeconds   int `toml:"online_threshold_seconds"`
-}
-
-// Config aggregates all configuration sections of coord-server.
-type Config struct {
-	Server    ServerConfig    `toml:"server"`
-	Database  DatabaseConfig  `toml:"database"`
-	Auth      AuthConfig      `toml:"auth"`
-	VPN       VPNConfig       `toml:"vpn"`
-	RateLimit RateLimitConfig `toml:"rate_limit"`
-	Jobs      JobsConfig      `toml:"jobs"`
-	Registry  RegistryConfig  `toml:"registry"`
-}
 
 const (
 	DefaultListen                       = "0.0.0.0:8080"
-	DefaultDBPath                       = "data/coord-server.db"
+	DefaultDBPath                       = "/var/lib/goy-coord/coord.db"
 	DefaultReadTimeoutSeconds           = 15
 	DefaultWriteTimeoutSeconds          = 15
 	DefaultRequireAuth                  = true
@@ -108,91 +32,21 @@ const (
 
 var DefaultPublicPaths = []string{"/health", "/info", "/metrics"}
 
-// DefaultConfig creates a Config instance with default values.
+// DefaultConfig is an alias to Defaults for backwards compatibility.
 func DefaultConfig() *Config {
-	return &Config{
-		Server: ServerConfig{
-			Listen:              DefaultListen,
-			ReadTimeoutSeconds:  DefaultReadTimeoutSeconds,
-			WriteTimeoutSeconds: DefaultWriteTimeoutSeconds,
-		},
-		Database: DatabaseConfig{
-			Path: DefaultDBPath,
-		},
-		Auth: AuthConfig{
-			RequireAuth: DefaultRequireAuth,
-			AdminAPIKey: "",
-			HMACSecret:  "",
-			PublicPaths: DefaultPublicPaths,
-		},
-		VPN: VPNConfig{
-			Enabled:                 false,
-			Provider:                "",
-			TailscaleAPIKey:         "",
-			TailscaleTailnet:        "",
-			TailscaleTag:            "",
-			TailscaleKeyExpiryHours: DefaultTailscaleKeyExpiryHours,
-			TailscaleKeyReusable:    DefaultTailscaleKeyReusable,
-			HeadscaleAPIURL:         "",
-			HeadscaleAPIKey:         "",
-			HeadscaleUser:           DefaultHeadscaleUser,
-			HeadscaleKeyExpiryHours: DefaultHeadscaleKeyExpiryHours,
-			HeadscaleKeyReusable:    DefaultHeadscaleKeyReusable,
-		},
-		RateLimit: RateLimitConfig{
-			RequestsPerMinute: DefaultRequestsPerMinute,
-			Burst:             DefaultBurst,
-			HeartbeatRPM:      DefaultHeartbeatRPM,
-		},
-		Jobs: JobsConfig{
-			CleanupRelaysIntervalSeconds: DefaultCleanupRelaysIntervalSeconds,
-			CleanupNodesIntervalSeconds:  DefaultCleanupNodesIntervalSeconds,
-			StatsRefreshIntervalSeconds:  DefaultStatsRefreshIntervalSeconds,
-			NodeInactiveThresholdHours:   DefaultNodeInactiveThresholdHours,
-		},
-		Registry: RegistryConfig{
-			RelayTTLSeconds:          DefaultRelayTTLSeconds,
-			DiscoveryCacheTTLSeconds: DefaultDiscoveryCacheTTLSeconds,
-			MaxRelaysPerResponse:     DefaultMaxRelaysPerResponse,
-			OnlineThresholdSeconds:   DefaultOnlineThresholdSeconds,
-		},
-	}
-}
-
-// Load loads configuration from the specified TOML file, applying defaults and env var overrides.
-func Load(path string) (*Config, error) {
-	cfg := DefaultConfig()
-
-	if path != "" {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			if err := generateDefaultConfigFile(path); err != nil {
-				_ = err
-			}
-		} else if err == nil {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("error reading configuration file %s: %w", path, err)
-			}
-			if err := toml.Unmarshal(data, cfg); err != nil {
-				return nil, fmt.Errorf("error decoding TOML from %s: %w", path, err)
-			}
-		}
-	}
-
-	applyDefaults(cfg)
-	applyEnvOverrides(cfg)
-
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("configuration validation failed: %w", err)
-	}
-
-	return cfg, nil
+	return Defaults()
 }
 
 func applyDefaults(cfg *Config) {
-	if cfg.Server.Listen == "" {
+	if cfg.Server.Bind == "" && cfg.Server.Listen == "" {
+		cfg.Server.Bind = DefaultListen
 		cfg.Server.Listen = DefaultListen
+	} else if cfg.Server.Bind == "" {
+		cfg.Server.Bind = cfg.Server.Listen
+	} else if cfg.Server.Listen == "" {
+		cfg.Server.Listen = cfg.Server.Bind
 	}
+
 	if cfg.Server.ReadTimeoutSeconds <= 0 {
 		cfg.Server.ReadTimeoutSeconds = DefaultReadTimeoutSeconds
 	}
@@ -247,11 +101,18 @@ func applyDefaults(cfg *Config) {
 	if cfg.Registry.OnlineThresholdSeconds <= 0 {
 		cfg.Registry.OnlineThresholdSeconds = DefaultOnlineThresholdSeconds
 	}
+	if cfg.Log.Level == "" {
+		cfg.Log.Level = "info"
+	}
+	if cfg.Log.Format == "" {
+		cfg.Log.Format = "json"
+	}
 }
 
 func applyEnvOverrides(cfg *Config) {
 	if envListen := os.Getenv("COORD_LISTEN"); envListen != "" {
 		cfg.Server.Listen = envListen
+		cfg.Server.Bind = envListen
 	}
 	if envDBPath := os.Getenv("COORD_DB_PATH"); envDBPath != "" {
 		cfg.Database.Path = envDBPath
@@ -298,6 +159,7 @@ func applyEnvOverrides(cfg *Config) {
 	// Headscale Overrides
 	if envHeadscaleURL := os.Getenv("COORD_HEADSCALE_API_URL"); envHeadscaleURL != "" {
 		cfg.VPN.HeadscaleAPIURL = envHeadscaleURL
+		cfg.VPN.HeadscaleURL = envHeadscaleURL
 	}
 	if envHeadscaleKey := os.Getenv("COORD_HEADSCALE_API_KEY"); envHeadscaleKey != "" {
 		cfg.VPN.HeadscaleAPIKey = envHeadscaleKey
@@ -359,57 +221,58 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.Registry.OnlineThresholdSeconds = val
 		}
 	}
+
+	// Log Overrides
+	if envLogLevel := os.Getenv("COORD_LOG_LEVEL"); envLogLevel != "" {
+		cfg.Log.Level = envLogLevel
+	}
+	if envLogFormat := os.Getenv("COORD_LOG_FORMAT"); envLogFormat != "" {
+		cfg.Log.Format = envLogFormat
+	}
 }
 
-// Validate verifies that required configuration fields are valid.
-func (c *Config) Validate() error {
-	if strings.TrimSpace(c.Server.Listen) == "" {
-		return errors.New("server.listen cannot be empty")
-	}
+const defaultConfigFileTemplate = `# =====================================================================
+# Goy Coord-Server Configuration
+# Generated by: coord-server --generate-config
+# Docs: https://docs.goy.company/coord-server/config
+# =====================================================================
 
-	_, _, err := net.SplitHostPort(c.Server.Listen)
-	if err != nil {
-		return fmt.Errorf("invalid server.listen ('%s'): %w", c.Server.Listen, err)
-	}
+[server]
+bind = "0.0.0.0:8080"
 
-	if strings.TrimSpace(c.Database.Path) == "" {
-		return errors.New("database.path cannot be empty")
-	}
+[auth]
+# Admin API key para proteger endpoints administrativos.
+# Gerada automaticamente no primeiro run se vazia.
+admin_api_key = ""
 
-	if c.Auth.RequireAuth {
-		if strings.TrimSpace(c.Auth.AdminAPIKey) == "" {
-			return errors.New("auth.require_auth is true but COORD_ADMIN_API_KEY is not set in environment variables")
-		}
-	}
+[database]
+path = "/var/lib/goy-coord/coord.db"
 
-	if c.VPN.Enabled && c.VPN.Provider != "" {
-		switch c.VPN.Provider {
-		case "tailscale":
-			if strings.TrimSpace(c.VPN.TailscaleAPIKey) == "" {
-				return errors.New("vpn.provider is 'tailscale' but COORD_TAILSCALE_API_KEY is empty")
-			}
-			if strings.TrimSpace(c.VPN.TailscaleTailnet) == "" {
-				return errors.New("vpn.provider is 'tailscale' but vpn.tailscale_tailnet (COORD_TAILSCALE_TAILNET) is empty")
-			}
-		case "headscale":
-			if strings.TrimSpace(c.VPN.HeadscaleAPIURL) == "" {
-				return errors.New("vpn.provider is 'headscale' but vpn.headscale_api_url (COORD_HEADSCALE_API_URL) is empty")
-			}
-			if strings.TrimSpace(c.VPN.HeadscaleAPIKey) == "" {
-				return errors.New("vpn.provider is 'headscale' but COORD_HEADSCALE_API_KEY is empty")
-			}
-			if strings.TrimSpace(c.VPN.HeadscaleUser) == "" {
-				return errors.New("vpn.provider is 'headscale' but vpn.headscale_user (COORD_HEADSCALE_USER) is empty")
-			}
-		default:
-			return fmt.Errorf("invalid vpn.provider '%s': valid options are 'tailscale', 'headscale', ''", c.VPN.Provider)
-		}
-	}
+[vpn]
+# Provider VPN: "tailscale", "headscale", ou "" (sem VPN)
+provider = ""
 
-	return nil
-}
+# Tailscale (se provider = "tailscale")
+# tailscale_api_key = "tskey-api-..."
+# tailscale_tailnet = "example.com"
 
-// generateDefaultConfigFile creates the config.toml file with explanatory comments.
+# Headscale (se provider = "headscale")
+# headscale_url = "https://headscale.example.com"
+# headscale_api_key = "..."
+# headscale_user = "goy"
+
+# Expiração das pre-auth keys em horas
+key_expiry_hours = 168
+
+[ratelimit]
+requests_per_minute = 60
+
+[log]
+level = "info"
+format = "json"
+`
+
+// generateDefaultConfigFile creates the config.toml file with default values.
 func generateDefaultConfigFile(path string) error {
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
@@ -417,86 +280,5 @@ func generateDefaultConfigFile(path string) error {
 			return err
 		}
 	}
-
-	content := `# Coord Server Configuration (Goy Mesh Network)
-# This file is automatically generated with default values.
-
-[server]
-# Address and port on which the HTTP server will listen.
-listen = "0.0.0.0:8080"
-
-# HTTP server timeouts (in seconds).
-read_timeout_seconds = 15
-write_timeout_seconds = 15
-
-[database]
-# Path to SQLite database file.
-path = "data/coord-server.db"
-
-[auth]
-# Enable API key authentication on protected endpoints (default: true)
-require_auth = true
-
-# Public routes exempt from authentication
-public_paths = ["/health", "/info", "/metrics"]
-
-# Note: The administrator API key must NEVER be stored in this file.
-# Set the COORD_ADMIN_API_KEY environment variable in your execution environment.
-
-[vpn]
-# Enable or disable VPN integration (default: false)
-enabled = false
-
-# Provider type: "tailscale" | "headscale" | "" (disabled)
-provider = ""
-
-# Tailscale config (used when provider = "tailscale")
-tailscale_tailnet = ""
-tailscale_tag = ""
-tailscale_key_expiry_hours = 24
-tailscale_key_reusable = false
-# Note: COORD_TAILSCALE_API_KEY must be provided via environment variable.
-
-# Headscale config (used when provider = "headscale")
-headscale_api_url = ""
-headscale_user = "goy-nodes"
-headscale_key_expiry_hours = 24
-headscale_key_reusable = false
-# Note: COORD_HEADSCALE_API_KEY must be provided via environment variable.
-
-[rate_limit]
-# Global HTTP request limit per minute per IP
-requests_per_minute = 60
-
-# Maximum burst size allowed
-burst = 30
-
-# Specific limit for heartbeat requests (PUT /relays/{id}) per minute per IP
-heartbeat_rpm = 120
-
-[jobs]
-# Execution interval for stale relay cleanup job (in seconds)
-cleanup_relays_interval_seconds = 60
-
-# Execution interval for inactive node cleanup job (in seconds)
-cleanup_nodes_interval_seconds = 300
-
-# Update interval for node and relay metrics and stats (in seconds)
-stats_refresh_interval_seconds = 30
-
-# Time threshold for a node without activity to be considered inactive (in hours)
-node_inactive_threshold_hours = 24
-
-[registry]
-# Activity time window for a relay to be considered active (in seconds).
-relay_ttl_seconds = 300
-
-# In-memory cache TTL for GET /relays route (in seconds).
-discovery_cache_ttl_seconds = 15
-
-# Maximum number of relays returned per discovery response.
-max_relays_per_response = 100
-`
-
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(path, []byte(defaultConfigFileTemplate), 0644)
 }
